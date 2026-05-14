@@ -1,0 +1,36 @@
+2025-12-26 14:46:19.139 INFO  [main] c.e.simulator.SimulatorApplication - Starting SimulatorApplication using Java 17.0.12 with PID 52912 (C:\Users\kushagragupta\Downloads\Simulator\Simulator\target\classes started by kushagragupta in C:\Users\kushagragupta\Downloads\Simulator\Simulator)
+2025-12-26 14:46:19.149 DEBUG [main] c.e.simulator.SimulatorApplication - Running with Spring Boot v4.0.0, Spring v7.0.1
+2025-12-26 14:46:19.153 INFO  [main] c.e.simulator.SimulatorApplication - No active profile set, falling back to 1 default profile: "default"
+2025-12-26 14:46:20.449 INFO  [main] o.s.d.r.c.RepositoryConfigurationDelegate - Bootstrapping Spring Data JPA repositories in DEFAULT mode.
+2025-12-26 14:46:20.562 INFO  [main] o.s.d.r.c.RepositoryConfigurationDelegate - Finished Spring Data repository scanning in 88 ms. Found 1 JPA repository interface.
+2025-12-26 14:46:21.451 INFO  [main] o.s.boot.tomcat.TomcatWebServer - Tomcat initialized with port 8080 (http)
+2025-12-26 14:46:21.467 INFO  [main] o.a.catalina.core.StandardService - Starting service [Tomcat]
+2025-12-26 14:46:21.468 INFO  [main] o.a.catalina.core.StandardEngine - Starting Servlet engine: [Apache Tomcat/11.0.14]
+2025-12-26 14:46:21.602 INFO  [main] o.s.b.w.c.s.WebApplicationContextInitializer - Root WebApplicationContext: initialization completed in 2221 ms
+2025-12-26 14:46:21.905 INFO  [main] o.h.jpa.internal.util.LogHelper - HHH000204: Processing PersistenceUnitInfo [name: default]
+2025-12-26 14:46:22.007 INFO  [main] org.hibernate.Version - HHH000412: Hibernate ORM core version 7.1.8.Final
+2025-12-26 14:46:22.760 INFO  [main] o.s.o.j.p.SpringPersistenceUnitInfo - No LoadTimeWeaver setup: ignoring JPA class transformer
+2025-12-26 14:46:22.856 INFO  [main] com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Starting...
+2025-12-26 14:46:23.128 INFO  [main] com.zaxxer.hikari.pool.HikariPool - HikariPool-1 - Added connection conn0: url=jdbc:h2:mem:testdb user=SA
+2025-12-26 14:46:23.130 INFO  [main] com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Start completed.
+2025-12-26 14:46:23.160 WARN  [main] org.hibernate.orm.deprecation - HHH90000025: H2Dialect does not need to be specified explicitly using 'hibernate.dialect' (remove the property setting and it will be selected by default)
+2025-12-26 14:46:23.184 INFO  [main] o.hibernate.orm.connections.pooling - HHH10001005: Database info:
+	Database JDBC URL [jdbc:h2:mem:testdb]
+	Database driver: H2 JDBC Driver
+	Database dialect: H2Dialect
+	Database version: 2.4.240
+	Default catalog/schema: TESTDB/PUBLIC
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: 100
+	Pool: DatasourceConnectionProviderImpl
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2025-12-26 14:46:24.156 INFO  [main] o.h.e.t.j.p.i.JtaPlatformInitiator - HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+2025-12-26 14:46:24.234 INFO  [main] o.s.o.j.LocalContainerEntityManagerFactoryBean - Initialized JPA EntityManagerFactory for persistence unit 'default'
+2025-12-26 14:46:24.383 INFO  [main] o.s.d.j.r.q.QueryEnhancerFactories - Hibernate is in classpath; If applicable, HQL parser will be used.
+2025-12-26 14:46:24.765 WARN  [main] o.s.b.j.a.JpaBaseConfiguration$JpaWebConfiguration - spring.jpa.open-in-view is enabled by default. Therefore, database queries may be performed during view rendering. Explicitly configure spring.jpa.open-in-view to disable this warning
+2025-12-26 14:46:25.343 INFO  [main] o.s.boot.tomcat.TomcatWebServer - Tomcat started on port 8080 (http) with context path '/'
+2025-12-26 14:46:25.354 INFO  [main] c.e.simulator.SimulatorApplication - Started SimulatorApplication in 7.043 seconds (process running for 7.639)
+2025-12-26 14:46:25.361 INFO  [main] c.e.simulator.SimulatorApplication - >>> APPLICATION STARTED <<<
+2025-12-26 22:13:05.685 WARN  [HikariPool-1:housekeeper] com.zaxxer.hikari.pool.HikariPool - HikariPool-1 - Thread starvation or clock leap detected (housekeeper delta=7h26m45s845ms70µs800ns).
