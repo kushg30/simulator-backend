@@ -2,8 +2,6 @@ FROM eclipse-temurin:17
 
 WORKDIR /app
 
-RUN ls -la target
-
 COPY . .
 
 RUN chmod +x mvnw
