@@ -57,29 +57,25 @@ public interface ArtifactQueryRepository extends org.springframework.data.reposi
 			 AND de.run_id = sr.run_id
 			 AND de.run_participant_id = :participantId
 
-
-			LEFT JOIN artifact_conditions ac
-			  ON ac.artifact_id = a.artifact_id
-
-			LEFT JOIN decision_events de_cond
-			  ON de_cond.decision_id = ac.depends_on_decision_id
-			 AND de_cond.run_id = sr.run_id
-			 AND de_cond.run_participant_id = :participantId
-			 AND de_cond.action = ac.expected_action
-
 			WHERE sr.run_id = :runId
-
-			AND now() >= (sr.started_at + (a.open_offset_min || ' minutes')::interval)
+			
+			AND NOT EXISTS (
+				    SELECT 1
+				    FROM artifact_conditions ac
+				    WHERE ac.artifact_id = a.artifact_id
+				      AND NOT EXISTS (
+				          SELECT 1
+				          FROM decision_events de_cond
+				          WHERE de_cond.decision_id = ac.depends_on_decision_id
+				            AND de_cond.run_id = sr.run_id
+				            AND de_cond.run_participant_id = :participantId
+				            AND de_cond.action = ac.expected_action
+				      )
+				)
 
 			AND (
 			    a.allowed_roles IS NULL
 			    OR jsonb_exists(a.allowed_roles, rp.role)
-			)
-
-
-			AND (
-			    ac.id IS NULL
-			    OR de_cond.decision_event_id IS NOT NULL
 			)
 
 			ORDER BY openAt
