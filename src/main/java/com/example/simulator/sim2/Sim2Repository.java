@@ -39,16 +39,25 @@ public interface Sim2Repository extends org.springframework.data.repository.Repo
 			""", nativeQuery = true)
 	void startRound(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
 
+	/**
+	 * Round states, with the clock shifted by any faculty pause so the countdown a student sees
+	 * stops moving while the round is paused.
+	 */
 	@Query(value = """
-			SELECT round_number   AS "roundNumber",
-			       status         AS "status",
-			       started_at     AS "startedAt",
-			       ends_at        AS "endsAt",
-			       paused_seconds_total AS "pausedSecondsTotal",
-			       completed_at   AS "completedAt"
-			FROM sim2_round_state
-			WHERE run_id = :runId
-			ORDER BY round_number
+			SELECT rs.round_number AS "roundNumber",
+			       rs.status       AS "status",
+			       rs.started_at   AS "startedAt",
+			       (rs.ends_at + (COALESCE(rc.paused_seconds_total, 0)
+			                    + COALESCE(EXTRACT(EPOCH FROM (now() - rc.paused_at))::int, 0)
+			                     || ' seconds')::interval) AS "endsAt",
+			       COALESCE(rc.paused_seconds_total, 0) AS "pausedSecondsTotal",
+			       (rc.paused_at IS NOT NULL)           AS "paused",
+			       rs.completed_at AS "completedAt"
+			FROM sim2_round_state rs
+			LEFT JOIN run_round_clock rc ON rc.run_id = rs.run_id
+			                            AND rc.round_number = rs.round_number
+			WHERE rs.run_id = :runId
+			ORDER BY rs.round_number
 			""", nativeQuery = true)
 	List<Map<String, Object>> findRoundStates(@Param("runId") UUID runId);
 
@@ -68,14 +77,18 @@ public interface Sim2Repository extends org.springframework.data.repository.Repo
 
 	/**
 	 * Active seconds elapsed in a round = wall-clock since round start minus any faculty-paused
-	 * duration. Phase 2 populates {@code paused_seconds_total}; it defaults to 0 today, so this
-	 * is already the correct Turnaround Discipline input and needs no rework later.
+	 * duration, read from the shared {@code run_round_clock} owned by the faculty control layer.
+	 * A team paused by a facilitator is never penalised for time it did not have.
 	 */
 	@Query(value = """
 			SELECT GREATEST(0,
-			         EXTRACT(EPOCH FROM (now() - started_at))::int - paused_seconds_total)
-			FROM sim2_round_state
-			WHERE run_id = :runId AND round_number = :roundNumber
+			         EXTRACT(EPOCH FROM (now() - rs.started_at))::int
+			         - COALESCE(rc.paused_seconds_total, 0)
+			         - COALESCE(EXTRACT(EPOCH FROM (now() - rc.paused_at))::int, 0))
+			FROM sim2_round_state rs
+			LEFT JOIN run_round_clock rc ON rc.run_id = rs.run_id
+			                            AND rc.round_number = rs.round_number
+			WHERE rs.run_id = :runId AND rs.round_number = :roundNumber
 			""", nativeQuery = true)
 	Integer findActiveSecondsElapsed(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
 
@@ -100,9 +113,9 @@ public interface Sim2Repository extends org.springframework.data.repository.Repo
 			  a.expected_action AS "expectedAction",
 			  r.round_number    AS "roundNumber",
 			  (rs.started_at + (a.open_offset_min   || ' minutes')::interval
-			                 + (rs.paused_seconds_total || ' seconds')::interval) AS "openAt",
+			                 + (pause.secs || ' seconds')::interval) AS "openAt",
 			  (rs.started_at + (a.expiry_offset_min || ' minutes')::interval
-			                 + (rs.paused_seconds_total || ' seconds')::interval) AS "expiresAt",
+			                 + (pause.secs || ' seconds')::interval) AS "expiresAt",
 			  d.decision_id     AS "decisionId",
 			  d.decision_type   AS "decisionType",
 			  d.options::text   AS "decisionOptions",
@@ -116,7 +129,7 @@ public interface Sim2Repository extends org.springframework.data.repository.Repo
 			  CASE
 			    WHEN de.decision_event_id IS NOT NULL THEN 'ACTED'
 			    WHEN now() >= (rs.started_at + (a.expiry_offset_min || ' minutes')::interval
-			                                 + (rs.paused_seconds_total || ' seconds')::interval) THEN 'EXPIRED'
+			                                 + (pause.secs || ' seconds')::interval) THEN 'EXPIRED'
 			    WHEN d.decision_id IS NOT NULL
 			         AND (d.allowed_roles IS NULL OR jsonb_exists(d.allowed_roles, rp.role)) THEN 'OPEN'
 			    ELSE 'READ_ONLY'
@@ -124,6 +137,16 @@ public interface Sim2Repository extends org.springframework.data.repository.Repo
 
 			FROM sim2_round_state rs
 			JOIN simulation_runs sr ON sr.run_id = rs.run_id
+			-- Shared, simulation-agnostic clock owned by the faculty control layer.
+			LEFT JOIN run_round_clock rc ON rc.run_id = rs.run_id
+			                            AND rc.round_number = rs.round_number
+			-- Total time to shift artifacts by: completed pauses PLUS any pause still in
+			-- progress. Including the in-progress one is what freezes releases mid-pause
+			-- instead of letting them all fire at once on resume.
+			CROSS JOIN LATERAL (
+			  SELECT COALESCE(rc.paused_seconds_total, 0)
+			       + COALESCE(EXTRACT(EPOCH FROM (now() - rc.paused_at))::int, 0) AS secs
+			) pause
 			JOIN rounds r  ON r.simulation_id = sr.simulation_id
 			              AND r.round_number  = rs.round_number
 			JOIN artifacts a ON a.round_id = r.round_id
@@ -139,7 +162,7 @@ public interface Sim2Repository extends org.springframework.data.repository.Repo
 			  AND rs.round_number = :roundNumber
 			  AND rs.status = 'ACTIVE'
 			  AND now() >= (rs.started_at + (a.open_offset_min || ' minutes')::interval
-			                              + (rs.paused_seconds_total || ' seconds')::interval)
+			                              + (pause.secs || ' seconds')::interval)
 			  AND (a.allowed_roles IS NULL OR jsonb_exists(a.allowed_roles, rp.role))
 
 			ORDER BY a.open_offset_min

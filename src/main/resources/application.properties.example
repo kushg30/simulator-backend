@@ -44,3 +44,12 @@ logging.pattern.file=%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} 
 logging.pattern.console=%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n
 logging.level.root=INFO
 logging.level.com.example.simulator=DEBUG
+
+# -------------------------
+# Faculty control layer (platform-wide)
+# -------------------------
+# Shared facilitator token, handed to whoever is running the session. Every
+# /api/faculty/* route requires it as either an X-Faculty-Token header or a
+# ?facultyToken= query parameter.
+# If this is left blank the faculty endpoints refuse ALL requests (fail closed).
+faculty.access-token=CHANGE_ME
