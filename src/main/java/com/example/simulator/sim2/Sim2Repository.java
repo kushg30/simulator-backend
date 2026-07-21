@@ -52,6 +52,13 @@ public interface Sim2Repository extends org.springframework.data.repository.Repo
 			                     || ' seconds')::interval) AS "endsAt",
 			       COALESCE(rc.paused_seconds_total, 0) AS "pausedSecondsTotal",
 			       (rc.paused_at IS NOT NULL)           AS "paused",
+			       -- Authoritative remaining time, computed server side. The client shows
+			       -- this rather than deriving it, which avoids clock skew and stops the
+			       -- countdown drifting between polls while a round is paused.
+			       GREATEST(0, EXTRACT(EPOCH FROM (
+			           rs.ends_at + (COALESCE(rc.paused_seconds_total, 0)
+			                       + COALESCE(EXTRACT(EPOCH FROM (now() - rc.paused_at))::int, 0)
+			                        || ' seconds')::interval - now()))::int) AS "remainingSeconds",
 			       rs.completed_at AS "completedAt"
 			FROM sim2_round_state rs
 			LEFT JOIN run_round_clock rc ON rc.run_id = rs.run_id
