@@ -97,26 +97,42 @@ public interface FacultyRepository extends org.springframework.data.repository.R
 	// Session overview — what the facilitator sees on the console
 	// =========================================================================
 
-	/** Every run with a round currently in play, across all simulations. */
+	/**
+	 * One row per TEAM, not per team-round.
+	 *
+	 * <p>A facilitator scans this list looking for teams, so a team must appear once showing the
+	 * round it is actually on: the round in play if there is one, otherwise the most recent. The
+	 * earlier version emitted a row per (team, round) pair, which made a team on round 5 appear
+	 * five times. Live teams sort to the top since those are the ones that can be acted on.
+	 */
 	@Query(value = """
-			SELECT sr.run_id        AS "runId",
-			       sr.team_name     AS "teamName",
-			       s.name           AS "simulationName",
-			       sr.simulation_id AS "simulationId",
-			       rs.round_number  AS "roundNumber",
-			       rs.status        AS "roundStatus",
-			       rs.started_at    AS "startedAt",
-			       COALESCE(rc.paused_seconds_total, 0) AS "pausedSecondsTotal",
-			       (rc.paused_at IS NOT NULL)           AS "paused",
-			       EXISTS (SELECT 1 FROM run_round_bypass b
-			                WHERE b.run_id = sr.run_id AND b.round_number = rs.round_number) AS "bypassed"
-			FROM simulation_runs sr
-			JOIN simulations s ON s.simulation_id = sr.simulation_id
-			JOIN sim2_round_state rs ON rs.run_id = sr.run_id
-			LEFT JOIN run_round_clock rc ON rc.run_id = rs.run_id
-			                            AND rc.round_number = rs.round_number
-			WHERE rs.status IN ('ACTIVE','COMPLETE')
-			ORDER BY rs.started_at DESC
+			SELECT * FROM (
+			  SELECT DISTINCT ON (sr.run_id)
+			         sr.run_id        AS "runId",
+			         sr.team_name     AS "teamName",
+			         s.name           AS "simulationName",
+			         sr.simulation_id AS "simulationId",
+			         s.total_rounds   AS "totalRounds",
+			         rs.round_number  AS "roundNumber",
+			         rs.status        AS "roundStatus",
+			         rs.started_at    AS "startedAt",
+			         COALESCE(rc.paused_seconds_total, 0) AS "pausedSecondsTotal",
+			         (rc.paused_at IS NOT NULL)           AS "paused",
+			         EXISTS (SELECT 1 FROM run_round_bypass b
+			                  WHERE b.run_id = sr.run_id AND b.round_number = rs.round_number) AS "bypassed",
+			         (SELECT count(*) FROM sim2_round_state c
+			           WHERE c.run_id = sr.run_id AND c.status = 'COMPLETE') AS "roundsComplete"
+			  FROM simulation_runs sr
+			  JOIN simulations s ON s.simulation_id = sr.simulation_id
+			  JOIN sim2_round_state rs ON rs.run_id = sr.run_id
+			  LEFT JOIN run_round_clock rc ON rc.run_id = rs.run_id
+			                              AND rc.round_number = rs.round_number
+			  ORDER BY sr.run_id,
+			           -- prefer the round in play, then the furthest one reached
+			           CASE rs.status WHEN 'ACTIVE' THEN 0 WHEN 'PENDING' THEN 1 ELSE 2 END,
+			           rs.round_number DESC
+			) t
+			ORDER BY (t."roundStatus" = 'ACTIVE') DESC, t."teamName"
 			LIMIT 100
 			""", nativeQuery = true)
 	List<Map<String, Object>> findSessionOverview();
