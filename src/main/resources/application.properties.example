@@ -1,0 +1,46 @@
+# ============================================================================
+# Template configuration.
+#
+# Copy this file to `application.properties` in the same directory and fill in
+# the values for your machine. The real file is gitignored because it holds
+# database credentials and machine-specific paths.
+#
+#   cp application.properties.example application.properties
+# ============================================================================
+
+# -------------------------
+# Database
+# -------------------------
+spring.datasource.url=jdbc:postgresql://localhost:5432/simulator_db
+spring.datasource.username=CHANGE_ME
+spring.datasource.password=CHANGE_ME
+
+spring.jpa.database-platform=org.hibernate.dialect.PostgreSQLDialect
+spring.jpa.show-sql=true
+spring.jpa.properties.hibernate.format_sql=true
+# Schema is hand-managed via src/main/resources/db/migration/*.sql.
+# `update` lets Hibernate add columns for JPA entities (team, participant) only.
+spring.jpa.hibernate.ddl-auto=update
+
+# -------------------------
+# Simulations
+# -------------------------
+# Simulation a team is assigned to when none is specified on creation.
+# This is Simulation 1 (Leadership Judgment - ANP Phoenix) and preserves the
+# behaviour that previously came from a hardcoded UUID in RunService.
+simulator.default-simulation-id=475db739-0708-48d4-b4db-5a23f1da50d9
+
+# Simulator 2 (Meridian Retail QBR): where round submissions are stored.
+# Files are retained for faculty review only and are never parsed.
+sim2.upload-dir=CHANGE_ME
+spring.servlet.multipart.max-file-size=50MB
+spring.servlet.multipart.max-request-size=50MB
+
+# -------------------------
+# Logging
+# -------------------------
+logging.file.name=CHANGE_ME
+logging.pattern.file=%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n
+logging.pattern.console=%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n
+logging.level.root=INFO
+logging.level.com.example.simulator=DEBUG

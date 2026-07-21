@@ -17,6 +17,17 @@ public class Team {
 
     private boolean locked = false;
 
+    /** Which simulation this team is playing. Null is treated as Simulation 1. */
+    private UUID simulationId;
+
+	public UUID getSimulationId() {
+		return simulationId;
+	}
+
+	public void setSimulationId(UUID simulationId) {
+		this.simulationId = simulationId;
+	}
+
 	public UUID getTeamId() {
 		return teamId;
 	}

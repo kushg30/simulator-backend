@@ -22,12 +22,17 @@ public class TeamController {
     }
 
     // 🔵 CREATE TEAM
+    // `simulationId` is optional: when omitted the team is assigned to the default
+    // simulation (Sim 1), which keeps the existing Sim-1 frontend working unchanged.
     @PostMapping
     public Map<String, Object> createTeam(@RequestBody Map<String, String> req) {
 
+        String simulationId = req.get("simulationId");
+
         return service.createTeam(
                 req.get("teamName"),
-                req.get("participantName")
+                req.get("participantName"),
+                (simulationId == null || simulationId.isBlank()) ? null : UUID.fromString(simulationId)
         );
     }
 

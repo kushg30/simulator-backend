@@ -31,3 +31,13 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Local configuration & secrets ###
+# Holds DB credentials and machine-specific paths.
+# Copy application.properties.example -> application.properties and fill in locally.
+src/main/resources/application.properties
+.env
+
+### Simulator 2 uploads (student workbooks) ###
+uploads/
+SimulatorUploads/
