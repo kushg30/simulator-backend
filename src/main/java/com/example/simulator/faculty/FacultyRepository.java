@@ -93,6 +93,142 @@ public interface FacultyRepository extends org.springframework.data.repository.R
 			@Param("injectedContent") String injectedContent, @Param("note") String note,
 			@Param("createdBy") String createdBy);
 
+	// =========================================================================
+	// Session overview — what the facilitator sees on the console
+	// =========================================================================
+
+	/** Every run with a round currently in play, across all simulations. */
+	@Query(value = """
+			SELECT sr.run_id        AS "runId",
+			       sr.team_name     AS "teamName",
+			       s.name           AS "simulationName",
+			       sr.simulation_id AS "simulationId",
+			       rs.round_number  AS "roundNumber",
+			       rs.status        AS "roundStatus",
+			       rs.started_at    AS "startedAt",
+			       COALESCE(rc.paused_seconds_total, 0) AS "pausedSecondsTotal",
+			       (rc.paused_at IS NOT NULL)           AS "paused",
+			       EXISTS (SELECT 1 FROM run_round_bypass b
+			                WHERE b.run_id = sr.run_id AND b.round_number = rs.round_number) AS "bypassed"
+			FROM simulation_runs sr
+			JOIN simulations s ON s.simulation_id = sr.simulation_id
+			JOIN sim2_round_state rs ON rs.run_id = sr.run_id
+			LEFT JOIN run_round_clock rc ON rc.run_id = rs.run_id
+			                            AND rc.round_number = rs.round_number
+			WHERE rs.status IN ('ACTIVE','COMPLETE')
+			ORDER BY rs.started_at DESC
+			LIMIT 100
+			""", nativeQuery = true)
+	List<Map<String, Object>> findSessionOverview();
+
+	/** Artifacts authored for a round, with any override already applied — delay/bypass targets. */
+	@Query(value = """
+			SELECT a.artifact_id     AS "artifactId",
+			       a.artifact_type   AS "artifactType",
+			       a.open_offset_min AS "openOffsetMin",
+			       COALESCE(ov.delay_minutes, 0) AS "delayMinutes",
+			       COALESCE(ov.bypassed, false)  AS "bypassed",
+			       a.payload ->> 'title'         AS "title"
+			FROM simulation_runs sr
+			JOIN rounds r    ON r.simulation_id = sr.simulation_id AND r.round_number = :roundNumber
+			JOIN artifacts a ON a.round_id = r.round_id
+			LEFT JOIN run_artifact_overrides ov ON ov.run_id = sr.run_id
+			                                   AND ov.artifact_id = a.artifact_id
+			WHERE sr.run_id = :runId
+			ORDER BY a.open_offset_min
+			""", nativeQuery = true)
+	List<Map<String, Object>> findRoundArtifacts(@Param("runId") UUID runId,
+			@Param("roundNumber") int roundNumber);
+
+	// =========================================================================
+	// Delay — shifts the target artifact AND everything scheduled after it in
+	// that round by the same amount, which is the clock-shift behaviour the
+	// spec asks for rather than re-authoring the schedule.
+	// =========================================================================
+
+	@Modifying
+	@Query(value = """
+			INSERT INTO run_artifact_overrides (run_id, artifact_id, delay_minutes, updated_at)
+			SELECT sr.run_id, a.artifact_id, :delayMinutes, now()
+			FROM simulation_runs sr
+			JOIN rounds r    ON r.simulation_id = sr.simulation_id AND r.round_number = :roundNumber
+			JOIN artifacts a ON a.round_id = r.round_id
+			WHERE sr.run_id = :runId
+			  AND a.open_offset_min >= (SELECT a2.open_offset_min FROM artifacts a2
+			                             WHERE a2.artifact_id = :artifactId)
+			ON CONFLICT (run_id, artifact_id) DO UPDATE
+			SET delay_minutes = run_artifact_overrides.delay_minutes + EXCLUDED.delay_minutes,
+			    updated_at = now()
+			""", nativeQuery = true)
+	void delayFrom(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber,
+			@Param("artifactId") UUID artifactId, @Param("delayMinutes") int delayMinutes);
+
+	// =========================================================================
+	// Bypass
+	// =========================================================================
+
+	/** Skips one artifact. Its micro-decision and any conditional trigger never fire. */
+	@Modifying
+	@Query(value = """
+			INSERT INTO run_artifact_overrides (run_id, artifact_id, bypassed, updated_at)
+			VALUES (:runId, :artifactId, true, now())
+			ON CONFLICT (run_id, artifact_id) DO UPDATE
+			SET bypassed = true, updated_at = now()
+			""", nativeQuery = true)
+	void bypassArtifact(@Param("runId") UUID runId, @Param("artifactId") UUID artifactId);
+
+	/**
+	 * Skips a whole round. It is EXCLUDED from the construct rollup rather than scored zero: a
+	 * bypassed round is treated as not attempted, not as failed.
+	 */
+	@Modifying
+	@Query(value = """
+			INSERT INTO run_round_bypass (run_id, round_number, reason)
+			VALUES (:runId, :roundNumber, :reason)
+			ON CONFLICT (run_id, round_number) DO UPDATE SET reason = EXCLUDED.reason
+			""", nativeQuery = true)
+	void bypassRound(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber,
+			@Param("reason") String reason);
+
+	@Modifying
+	@Query(value = """
+			UPDATE sim2_round_state SET status = 'BYPASSED'
+			WHERE run_id = :runId AND round_number = :roundNumber
+			""", nativeQuery = true)
+	void markRoundBypassed(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
+
+	// =========================================================================
+	// Injection
+	// =========================================================================
+
+	@Query(value = """
+			SELECT catalogue_id AS "catalogueId", round_number AS "roundNumber", title AS "title",
+			       content AS "content", tier AS "tier", canonical_answer AS "canonicalAnswer",
+			       effect AS "effect"
+			FROM catalogue_artifacts
+			WHERE simulation_id = :simulationId
+			ORDER BY round_number, title
+			""", nativeQuery = true)
+	List<Map<String, Object>> findCatalogue(@Param("simulationId") UUID simulationId);
+
+	@Modifying
+	@Query(value = """
+			INSERT INTO run_injected_artifacts (run_id, round_number, catalogue_id, title, content,
+			                                    tier, scored, canonical_answer)
+			VALUES (:runId, :roundNumber, :catalogueId, :title, :content, :tier, :scored, :canonicalAnswer)
+			""", nativeQuery = true)
+	void injectArtifact(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber,
+			@Param("catalogueId") UUID catalogueId, @Param("title") String title,
+			@Param("content") String content, @Param("tier") String tier,
+			@Param("scored") boolean scored, @Param("canonicalAnswer") String canonicalAnswer);
+
+	@Query(value = """
+			SELECT catalogue_id AS "catalogueId", title AS "title", content AS "content",
+			       tier AS "tier", canonical_answer AS "canonicalAnswer"
+			FROM catalogue_artifacts WHERE catalogue_id = :catalogueId
+			""", nativeQuery = true)
+	Map<String, Object> findCatalogueEntry(@Param("catalogueId") UUID catalogueId);
+
 	@Query(value = """
 			SELECT fa.action_id AS "actionId", fa.run_id AS "runId", fa.team_id AS "teamId",
 			       fa.round_number AS "roundNumber", fa.action_type AS "actionType",

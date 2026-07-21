@@ -61,7 +61,37 @@ public class Sim2RoundService {
 			m.put("actionState", v.getActionState());
 			out.add(m);
 		}
+
+		// Artifacts injected live by a facilitator. They carry no decision and are always
+		// read-only to students; a scored injection is graded through the round submission.
+		for (Map<String, Object> inj : repository.findInjectedArtifacts(runId, roundNumber)) {
+			Map<String, Object> m = new LinkedHashMap<>();
+			m.put("artifactId", inj.get("injectionId"));
+			m.put("artifactType", "INJECTED");
+			m.put("payload", "{\"tab\":\"inbox\",\"from\":\"Facilitator\",\"title\":"
+					+ jsonString(String.valueOf(inj.get("title"))) + ",\"body\":"
+					+ jsonString(String.valueOf(inj.get("content"))) + "}");
+			m.put("expectedAction", false);
+			m.put("roundNumber", roundNumber);
+			m.put("openAt", inj.get("injectedAt"));
+			m.put("expiresAt", null);
+			m.put("decisionId", null);
+			m.put("decisionType", null);
+			m.put("decisionOptions", null);
+			m.put("chosenAction", null);
+			m.put("actionState", "READ_ONLY");
+			out.add(m);
+		}
 		return out;
+	}
+
+	/** Minimal JSON string escaping for the synthesised injected-artifact payload. */
+	private String jsonString(String s) {
+		if (s == null) {
+			return "\"\"";
+		}
+		return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"")
+				.replace("\n", "\\n").replace("\r", "") + "\"";
 	}
 
 	/**

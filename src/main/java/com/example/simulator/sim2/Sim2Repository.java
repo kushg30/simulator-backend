@@ -112,9 +112,9 @@ public interface Sim2Repository extends org.springframework.data.repository.Repo
 			  a.payload::text   AS "payload",
 			  a.expected_action AS "expectedAction",
 			  r.round_number    AS "roundNumber",
-			  (rs.started_at + (a.open_offset_min   || ' minutes')::interval
+			  (rs.started_at + ((a.open_offset_min + COALESCE(ov.delay_minutes, 0)) || ' minutes')::interval
 			                 + (pause.secs || ' seconds')::interval) AS "openAt",
-			  (rs.started_at + (a.expiry_offset_min || ' minutes')::interval
+			  (rs.started_at + ((a.expiry_offset_min + COALESCE(ov.delay_minutes, 0)) || ' minutes')::interval
 			                 + (pause.secs || ' seconds')::interval) AS "expiresAt",
 			  d.decision_id     AS "decisionId",
 			  d.decision_type   AS "decisionType",
@@ -128,8 +128,9 @@ public interface Sim2Repository extends org.springframework.data.repository.Repo
 			  -- the start of a string literal, which breaks repository creation.
 			  CASE
 			    WHEN de.decision_event_id IS NOT NULL THEN 'ACTED'
-			    WHEN now() >= (rs.started_at + (a.expiry_offset_min || ' minutes')::interval
-			                                 + (pause.secs || ' seconds')::interval) THEN 'EXPIRED'
+			    WHEN now() >= (rs.started_at
+			                   + ((a.expiry_offset_min + COALESCE(ov.delay_minutes, 0)) || ' minutes')::interval
+			                   + (pause.secs || ' seconds')::interval) THEN 'EXPIRED'
 			    WHEN d.decision_id IS NOT NULL
 			         AND (d.allowed_roles IS NULL OR jsonb_exists(d.allowed_roles, rp.role)) THEN 'OPEN'
 			    ELSE 'READ_ONLY'
@@ -150,6 +151,9 @@ public interface Sim2Repository extends org.springframework.data.repository.Repo
 			JOIN rounds r  ON r.simulation_id = sr.simulation_id
 			              AND r.round_number  = rs.round_number
 			JOIN artifacts a ON a.round_id = r.round_id
+			-- Faculty delay/bypass for this run, applied per artifact.
+			LEFT JOIN run_artifact_overrides ov ON ov.run_id = rs.run_id
+			                                   AND ov.artifact_id = a.artifact_id
 			JOIN run_participants rp ON rp.run_id = sr.run_id
 			                        AND rp.run_participant_id = :participantId
 			LEFT JOIN decisions d ON d.artifact_id = a.artifact_id
@@ -161,14 +165,32 @@ public interface Sim2Repository extends org.springframework.data.repository.Repo
 			WHERE rs.run_id = :runId
 			  AND rs.round_number = :roundNumber
 			  AND rs.status = 'ACTIVE'
-			  AND now() >= (rs.started_at + (a.open_offset_min || ' minutes')::interval
-			                              + (pause.secs || ' seconds')::interval)
+			  AND now() >= (rs.started_at
+			                + ((a.open_offset_min + COALESCE(ov.delay_minutes, 0)) || ' minutes')::interval
+			                + (pause.secs || ' seconds')::interval)
+			  -- A bypassed artifact never appears, so its decision and any conditional
+			  -- trigger never fire either.
+			  AND COALESCE(ov.bypassed, false) = false
 			  AND (a.allowed_roles IS NULL OR jsonb_exists(a.allowed_roles, rp.role))
 
 			ORDER BY a.open_offset_min
 			""", nativeQuery = true)
 	List<Sim2ArtifactView> findVisibleArtifacts(@Param("runId") UUID runId,
 			@Param("participantId") UUID participantId, @Param("roundNumber") int roundNumber);
+
+	/**
+	 * Artifacts pushed into this run live by a facilitator. Kept as a separate query and merged in
+	 * the service rather than UNIONed into the visibility query, which keeps both readable.
+	 */
+	@Query(value = """
+			SELECT injection_id AS "injectionId", title AS "title", content AS "content",
+			       tier AS "tier", scored AS "scored", injected_at AS "injectedAt"
+			FROM run_injected_artifacts
+			WHERE run_id = :runId AND round_number = :roundNumber
+			ORDER BY injected_at
+			""", nativeQuery = true)
+	List<Map<String, Object>> findInjectedArtifacts(@Param("runId") UUID runId,
+			@Param("roundNumber") int roundNumber);
 
 	// =========================================================================
 	// Participants / roles
@@ -326,7 +348,11 @@ public interface Sim2Repository extends org.springframework.data.repository.Repo
 	List<Map<String, Object>> findConstructScores(@Param("runId") UUID runId,
 			@Param("roundNumber") int roundNumber);
 
-	/** Rollup across rounds. BYPASSED rounds are excluded, never counted as zero. */
+	/**
+	 * Rollup across rounds. A bypassed round is EXCLUDED from the average rather than counted as
+	 * zero, because it was not attempted rather than failed. Checks both the round status and the
+	 * platform bypass table, so a round bypassed by a facilitator is dropped either way.
+	 */
 	@Query(value = """
 			SELECT cs.construct_name AS "construct", ROUND(AVG(cs.value))::int AS "value"
 			FROM sim2_construct_scores cs
@@ -334,6 +360,8 @@ public interface Sim2Repository extends org.springframework.data.repository.Repo
 			WHERE cs.run_id = :runId
 			  AND cs.status = 'SCORED'
 			  AND rs.status <> 'BYPASSED'
+			  AND NOT EXISTS (SELECT 1 FROM run_round_bypass b
+			                   WHERE b.run_id = cs.run_id AND b.round_number = cs.round_number)
 			GROUP BY cs.construct_name
 			ORDER BY cs.construct_name
 			""", nativeQuery = true)
