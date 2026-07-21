@@ -107,6 +107,15 @@ public interface Sim2Repository extends org.springframework.data.repository.Repo
 			""", nativeQuery = true)
 	Integer findRoundDurationMinutes(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
 
+	/** The next authored round after this one, or null when the simulation is finished. */
+	@Query(value = """
+			SELECT MIN(r.round_number)
+			FROM rounds r
+			JOIN simulation_runs sr ON sr.simulation_id = r.simulation_id
+			WHERE sr.run_id = :runId AND r.round_number > :roundNumber
+			""", nativeQuery = true)
+	Integer findNextRoundNumber(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
+
 	// =========================================================================
 	// Artifact visibility — offsets are relative to ROUND start, shifted by any
 	// paused duration (clock-shift semantics from the faculty-control spec).
@@ -178,6 +187,21 @@ public interface Sim2Repository extends org.springframework.data.repository.Repo
 			  -- A bypassed artifact never appears, so its decision and any conditional
 			  -- trigger never fire either.
 			  AND COALESCE(ov.bypassed, false) = false
+			  -- Conditional artifacts: only shown when a prior decision was answered the
+			  -- way the condition requires. Checked at TEAM level because a Meridian twist
+			  -- is one decision for the whole team. This drives the cross-round flags, e.g.
+			  -- resolving the Round 1 twist by deleting rows raises a reconciliation note
+			  -- at the start of Round 2.
+			  AND NOT EXISTS (
+			      SELECT 1 FROM artifact_conditions ac
+			      WHERE ac.artifact_id = a.artifact_id
+			        AND NOT EXISTS (
+			            SELECT 1 FROM decision_events dc
+			            WHERE dc.decision_id = ac.depends_on_decision_id
+			              AND dc.run_id = sr.run_id
+			              AND dc.action  = ac.expected_action
+			        )
+			  )
 			  AND (a.allowed_roles IS NULL OR jsonb_exists(a.allowed_roles, rp.role))
 
 			ORDER BY a.open_offset_min

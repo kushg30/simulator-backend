@@ -96,6 +96,9 @@ public class Sim2SubmissionService {
 		response.put("correct", result.correct());
 		response.put("activeSecondsUsed", active);
 		response.put("constructs", repository.findConstructScores(runId, roundNumber));
+		// Null once the last round is submitted, which is how the UI knows to show the
+		// final reveal instead of offering another round.
+		response.put("nextRound", repository.findNextRoundNumber(runId, roundNumber));
 		return response;
 	}
 
@@ -133,6 +136,7 @@ public class Sim2SubmissionService {
 		out.put("submission", repository.findSubmission(runId, roundNumber));
 		out.put("constructs", repository.findConstructScores(runId, roundNumber));
 		out.put("rollup", repository.findConstructRollup(runId));
+		out.put("nextRound", repository.findNextRoundNumber(runId, roundNumber));
 		return out;
 	}
 }

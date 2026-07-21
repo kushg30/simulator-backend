@@ -1,8 +1,12 @@
 package com.example.simulator.sim2;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -56,15 +60,35 @@ public class Sim2GradingService {
 	private GradeResult gradeNumeric(String submitted, String canonical, BigDecimal tolAbs, BigDecimal tolPct) {
 
 		BigDecimal expected;
-		BigDecimal actual;
 		try {
 			expected = new BigDecimal(stripNumericNoise(canonical));
-			actual = new BigDecimal(stripNumericNoise(submitted));
 		} catch (NumberFormatException e) {
-			return new GradeResult(false, "NUMERIC", submitted, "not a number");
+			return new GradeResult(false, "NUMERIC", canonical, "answer key value is not numeric");
 		}
 
+		// Some rounds ask for a sentence containing the figure, e.g. Round 5 wants
+		// "Yes/No, with the figure". Try the whole string first, then fall back to any
+		// number found inside it, so a correct figure is not marked wrong for the prose
+		// wrapped around it.
+		List<BigDecimal> candidates = new ArrayList<>();
+		try {
+			candidates.add(new BigDecimal(stripNumericNoise(submitted)));
+		} catch (NumberFormatException ignored) {
+			candidates.addAll(extractNumbers(submitted));
+		}
+		if (candidates.isEmpty()) {
+			return new GradeResult(false, "NUMERIC", submitted, "no number found in the answer");
+		}
+
+		BigDecimal actual = candidates.get(0);
 		BigDecimal diff = actual.subtract(expected).abs();
+		for (BigDecimal c : candidates) {
+			BigDecimal d = c.subtract(expected).abs();
+			if (d.compareTo(diff) < 0) {
+				diff = d;
+				actual = c;
+			}
+		}
 
 		// No tolerance configured => exact match (Round 1 reconciliation total).
 		if (tolAbs == null && tolPct == null) {
@@ -88,7 +112,21 @@ public class Sim2GradingService {
 
 	/** Accepts "1,302,602", "1302602.00", "₹1302602" and "53.4%". */
 	private String stripNumericNoise(String s) {
-		return s.replaceAll("[,\\s₹$%]", "").replaceAll("(?i)^inr", "").trim();
+		return s.replaceAll("[,\\s₹$%]", "").replaceAll("(?i)^inr", "").replaceAll("(?i)inr$", "").trim();
+	}
+
+	/** Pulls every number out of a sentence, e.g. "Yes - India Stores: 230,739 INR" -> [230739]. */
+	private List<BigDecimal> extractNumbers(String s) {
+		List<BigDecimal> out = new ArrayList<>();
+		Matcher m = Pattern.compile("-?\\d[\\d,]*(?:\\.\\d+)?").matcher(s);
+		while (m.find()) {
+			try {
+				out.add(new BigDecimal(m.group().replace(",", "")));
+			} catch (NumberFormatException ignored) {
+				// not a usable number, skip
+			}
+		}
+		return out;
 	}
 
 	private String normalizeText(String s) {
