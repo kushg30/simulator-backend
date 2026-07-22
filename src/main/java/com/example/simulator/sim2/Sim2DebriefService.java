@@ -7,6 +7,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import java.util.Set;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,9 +34,11 @@ public class Sim2DebriefService {
 			Sim2ScoringService.INSIGHT_COMMUNICATION, Sim2ScoringService.JUDGMENT_CALIBRATION,
 			Sim2ScoringService.TURNAROUND_DISCIPLINE);
 
+	private static final Set<String> VALID_CONSTRUCTS = Set.copyOf(CONSTRUCTS);
+
 	/** One finalised team and its five construct values. Rows arrive ordered latest-finished first. */
 	private record TeamScores(UUID runId, String teamName, String simulationName, Object startedAt,
-			Object finishedAt, Map<String, Integer> values) {
+			Object finishedAt, Map<String, Integer> values, Map<String, String> overrides) {
 	}
 
 	private List<TeamScores> cohort(UUID simulationId) {
@@ -44,10 +48,14 @@ public class Sim2DebriefService {
 			TeamScores t = byRun.computeIfAbsent(runId,
 					k -> new TeamScores(runId, (String) row.get("teamName"),
 							(String) row.get("simulationName"), row.get("startedAt"),
-							row.get("finishedAt"), new LinkedHashMap<>()));
+							row.get("finishedAt"), new LinkedHashMap<>(), new LinkedHashMap<>()));
 			Object v = row.get("value");
+			String construct = (String) row.get("construct");
 			if (v != null) {
-				t.values().put((String) row.get("construct"), ((Number) v).intValue());
+				t.values().put(construct, ((Number) v).intValue());
+			}
+			if (row.get("overriddenBy") != null) {
+				t.overrides().put(construct, (String) row.get("overriddenBy"));
 			}
 		}
 		return new ArrayList<>(byRun.values()); // insertion order = finished-at desc
@@ -130,6 +138,47 @@ public class Sim2DebriefService {
 
 	// --------------------------------------------------------------- flags
 
+	// --------------------------------------------------------------- override
+
+	/**
+	 * Overrides a finalised construct for a team. Data Trust and Insight Communication are
+	 * proxy-derived, so a facilitator with the workbook in hand may adjust them; any construct can
+	 * be overridden. The auto value is preserved for revert, and the change is logged.
+	 */
+	@Transactional
+	public Map<String, Object> override(UUID runId, String construct, int value, String actor,
+			String reason) {
+		if (!VALID_CONSTRUCTS.contains(construct)) {
+			throw new IllegalArgumentException("Unknown construct: " + construct);
+		}
+		if (value < 0 || value > 100) {
+			throw new IllegalArgumentException("A construct score must be between 0 and 100");
+		}
+		if (repository.countFinalConstruct(runId, construct) == 0) {
+			throw new IllegalStateException(
+					"This team has no finalised " + construct + " to override yet");
+		}
+		repository.overrideConstruct(runId, construct, value, actor == null ? "facilitator" : actor,
+				reason);
+		repository.logOverride(runId,
+				"Override " + construct + " -> " + value + (reason == null ? "" : " (" + reason + ")"),
+				actor == null ? "facilitator" : actor,
+				"{\"construct\":\"" + construct + "\",\"value\":" + value + "}");
+		return Map.of("runId", runId, "construct", construct, "value", value, "overridden", true);
+	}
+
+	@Transactional
+	public Map<String, Object> revert(UUID runId, String construct, String actor) {
+		if (!VALID_CONSTRUCTS.contains(construct)) {
+			throw new IllegalArgumentException("Unknown construct: " + construct);
+		}
+		repository.revertConstruct(runId, construct);
+		repository.logOverride(runId, "Revert " + construct + " to the auto-computed score",
+				actor == null ? "facilitator" : actor,
+				"{\"construct\":\"" + construct + "\",\"reverted\":true}");
+		return Map.of("runId", runId, "construct", construct, "reverted", true);
+	}
+
 	/** Full facilitator debrief: every finalised team with its scores and the highlight flags. */
 	public Map<String, Object> debrief(UUID simulationId) {
 		List<TeamScores> teams = cohort(simulationId);
@@ -142,6 +191,7 @@ public class Sim2DebriefService {
 			r.put("startedAt", t.startedAt());
 			r.put("finishedAt", t.finishedAt());
 			r.put("scores", t.values());
+			r.put("overrides", t.overrides()); // construct -> facilitator who overrode it
 			r.putAll(flags(t.runId()));
 			rows.add(r);
 		}

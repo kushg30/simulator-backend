@@ -457,15 +457,77 @@ public interface Sim2Repository extends org.springframework.data.repository.Repo
 			""", nativeQuery = true)
 	String findRoundAction(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
 
-	/** The finalised run-level reveal: the five constructs stored at round 0. */
+	/** The finalised run-level reveal: the five constructs stored at round 0, with override provenance. */
 	@Query(value = """
 			SELECT construct_name AS "construct", value AS "value",
-			       status AS "status", detail AS "detail"
+			       status AS "status", detail AS "detail",
+			       original_value AS "originalValue", overridden_by AS "overriddenBy",
+			       override_reason AS "overrideReason"
 			FROM sim2_construct_scores
 			WHERE run_id = :runId AND round_number = 0
 			ORDER BY construct_name
 			""", nativeQuery = true)
 	List<Map<String, Object>> findFinalScores(@Param("runId") UUID runId);
+
+	// =========================================================================
+	// Faculty override of a finalised construct
+	// =========================================================================
+
+	/** Number of finalised (round 0) rows for this run+construct — used to validate the target. */
+	@Query(value = """
+			SELECT count(*) FROM sim2_construct_scores
+			WHERE run_id = :runId AND round_number = 0 AND construct_name = :construct
+			""", nativeQuery = true)
+	int countFinalConstruct(@Param("runId") UUID runId, @Param("construct") String construct);
+
+	/**
+	 * Sets a facilitator override. Preserves the first auto-computed value in original_value so the
+	 * override can later be reverted, and keeps the row SCORED.
+	 */
+	@Modifying
+	@Query(value = """
+			UPDATE sim2_construct_scores
+			SET original_value = COALESCE(original_value, value),
+			    value = :value,
+			    status = 'SCORED',
+			    overridden_by = :actor,
+			    override_reason = :reason,
+			    overridden_at = now(),
+			    calculated_at = now()
+			WHERE run_id = :runId AND round_number = 0 AND construct_name = :construct
+			""", nativeQuery = true)
+	void overrideConstruct(@Param("runId") UUID runId, @Param("construct") String construct,
+			@Param("value") int value, @Param("actor") String actor, @Param("reason") String reason);
+
+	/** Reverts an override back to the preserved auto-computed value. No-op if not overridden. */
+	@Modifying
+	@Query(value = """
+			UPDATE sim2_construct_scores
+			SET value = original_value,
+			    original_value = NULL,
+			    overridden_by = NULL,
+			    override_reason = NULL,
+			    overridden_at = NULL,
+			    calculated_at = now()
+			WHERE run_id = :runId AND round_number = 0 AND construct_name = :construct
+			  AND original_value IS NOT NULL
+			""", nativeQuery = true)
+	void revertConstruct(@Param("runId") UUID runId, @Param("construct") String construct);
+
+	@Query(value = "SELECT team_id FROM simulation_runs WHERE run_id = :runId", nativeQuery = true)
+	UUID findTeamIdForRun(@Param("runId") UUID runId);
+
+	/** Records an override in the shared facilitator action log. */
+	@Modifying
+	@Query(value = """
+			INSERT INTO faculty_actions (simulation_id, run_id, team_id, round_number, action_type,
+			                             scope, note, created_by, injected_content)
+			SELECT sr.simulation_id, :runId, sr.team_id, 0, 'OVERRIDE', 'TEAM', :note, :actor,
+			       CAST(:detail AS jsonb)
+			FROM simulation_runs sr WHERE sr.run_id = :runId
+			""", nativeQuery = true)
+	void logOverride(@Param("runId") UUID runId, @Param("note") String note,
+			@Param("actor") String actor, @Param("detail") String detail);
 
 	// =========================================================================
 	// Cohort debrief (spec section 8) — leaderboard and facilitator flags
@@ -483,7 +545,8 @@ public interface Sim2Repository extends org.springframework.data.repository.Repo
 			       sr.started_at    AS "startedAt",
 			       fin.finished_at  AS "finishedAt",
 			       cs.construct_name AS "construct",
-			       cs.value         AS "value"
+			       cs.value         AS "value",
+			       cs.overridden_by AS "overriddenBy"
 			FROM sim2_construct_scores cs
 			JOIN simulation_runs sr ON sr.run_id = cs.run_id
 			JOIN simulations s ON s.simulation_id = sr.simulation_id
