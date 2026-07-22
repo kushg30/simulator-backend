@@ -54,6 +54,10 @@ public class Sim2SubmissionService {
 		if (status == null || !"ACTIVE".equals(status)) {
 			throw new IllegalStateException("Round " + roundNumber + " is not active (status=" + status + ")");
 		}
+		// A paused round is frozen: the team cannot submit until the facilitator resumes.
+		if (Boolean.TRUE.equals(repository.isRoundPaused(runId, roundNumber))) {
+			throw new IllegalStateException("The round is paused; please wait for the facilitator to resume");
+		}
 
 		if (repository.countSubmissions(runId, roundNumber) > 0) {
 			throw new IllegalStateException("Round " + roundNumber + " has already been submitted");

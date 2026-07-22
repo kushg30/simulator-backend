@@ -74,6 +74,14 @@ public interface Sim2Repository extends org.springframework.data.repository.Repo
 			""", nativeQuery = true)
 	String findRoundStatus(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
 
+	/** True while a facilitator has this round paused — used to block student actions. */
+	@Query(value = """
+			SELECT (rc.paused_at IS NOT NULL)
+			FROM run_round_clock rc
+			WHERE rc.run_id = :runId AND rc.round_number = :roundNumber
+			""", nativeQuery = true)
+	Boolean isRoundPaused(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
+
 	@Modifying
 	@Query(value = """
 			UPDATE sim2_round_state
@@ -264,6 +272,16 @@ public interface Sim2Repository extends org.springframework.data.repository.Repo
 
 	@Query(value = "SELECT d.artifact_id FROM decisions d WHERE d.decision_id = :decisionId", nativeQuery = true)
 	UUID findArtifactIdByDecisionId(@Param("decisionId") UUID decisionId);
+
+	/** The round a decision belongs to, via its artifact. */
+	@Query(value = """
+			SELECT r.round_number
+			FROM decisions d
+			JOIN artifacts a ON a.artifact_id = d.artifact_id
+			JOIN rounds r    ON r.round_id = a.round_id
+			WHERE d.decision_id = :decisionId
+			""", nativeQuery = true)
+	Integer findRoundNumberByDecision(@Param("decisionId") UUID decisionId);
 
 	/** JSON array of role codes permitted to answer this decision; null means anyone. */
 	@Query(value = "SELECT d.allowed_roles::text FROM decisions d WHERE d.decision_id = :decisionId",

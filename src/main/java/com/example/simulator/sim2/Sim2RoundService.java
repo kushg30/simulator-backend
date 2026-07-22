@@ -107,6 +107,14 @@ public class Sim2RoundService {
 		if (role == null) {
 			throw new IllegalStateException("Participant is not part of this run");
 		}
+		Integer round = repository.findRoundNumberByDecision(decisionId);
+		if (round == null) {
+			throw new IllegalStateException("Decision is not linked to a round");
+		}
+		// A paused round is frozen for everyone: no artifact fires and no decision lands.
+		if (Boolean.TRUE.equals(repository.isRoundPaused(runId, round))) {
+			throw new IllegalStateException("The round is paused; please wait for the facilitator to resume");
+		}
 		if (!isRoleAllowed(decisionId, role)) {
 			throw new IllegalStateException("Role " + role + " is not permitted to answer this decision");
 		}
@@ -123,7 +131,7 @@ public class Sim2RoundService {
 		}
 
 		repository.insertDecisionEvent(runId, participantId, artifactId, decisionId, action,
-				latencyBand(runId, 1), LocalDateTime.now());
+				latencyBand(runId, round), LocalDateTime.now());
 	}
 
 	/**
