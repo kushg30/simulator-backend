@@ -479,14 +479,22 @@ public interface Sim2Repository extends org.springframework.data.repository.Repo
 	@Query(value = """
 			SELECT sr.run_id        AS "runId",
 			       sr.team_name     AS "teamName",
+			       s.name           AS "simulationName",
+			       sr.started_at    AS "startedAt",
+			       fin.finished_at  AS "finishedAt",
 			       cs.construct_name AS "construct",
 			       cs.value         AS "value"
 			FROM sim2_construct_scores cs
 			JOIN simulation_runs sr ON sr.run_id = cs.run_id
+			JOIN simulations s ON s.simulation_id = sr.simulation_id
+			-- When the run finalised = when its round-0 scores were written.
+			JOIN (SELECT run_id, MAX(calculated_at) AS finished_at
+			        FROM sim2_construct_scores WHERE round_number = 0 GROUP BY run_id) fin
+			  ON fin.run_id = cs.run_id
 			WHERE sr.simulation_id = :simulationId
 			  AND cs.round_number = 0
 			  AND cs.status = 'SCORED'
-			ORDER BY sr.team_name, cs.construct_name
+			ORDER BY fin.finished_at DESC, cs.construct_name
 			""", nativeQuery = true)
 	List<Map<String, Object>> findCohortFinalScores(@Param("simulationId") UUID simulationId);
 

@@ -32,8 +32,9 @@ public class Sim2DebriefService {
 			Sim2ScoringService.INSIGHT_COMMUNICATION, Sim2ScoringService.JUDGMENT_CALIBRATION,
 			Sim2ScoringService.TURNAROUND_DISCIPLINE);
 
-	/** One finalised team and its five construct values. */
-	private record TeamScores(UUID runId, String teamName, Map<String, Integer> values) {
+	/** One finalised team and its five construct values. Rows arrive ordered latest-finished first. */
+	private record TeamScores(UUID runId, String teamName, String simulationName, Object startedAt,
+			Object finishedAt, Map<String, Integer> values) {
 	}
 
 	private List<TeamScores> cohort(UUID simulationId) {
@@ -41,13 +42,15 @@ public class Sim2DebriefService {
 		for (Map<String, Object> row : repository.findCohortFinalScores(simulationId)) {
 			UUID runId = (UUID) row.get("runId");
 			TeamScores t = byRun.computeIfAbsent(runId,
-					k -> new TeamScores(runId, (String) row.get("teamName"), new LinkedHashMap<>()));
+					k -> new TeamScores(runId, (String) row.get("teamName"),
+							(String) row.get("simulationName"), row.get("startedAt"),
+							row.get("finishedAt"), new LinkedHashMap<>()));
 			Object v = row.get("value");
 			if (v != null) {
 				t.values().put((String) row.get("construct"), ((Number) v).intValue());
 			}
 		}
-		return new ArrayList<>(byRun.values());
+		return new ArrayList<>(byRun.values()); // insertion order = finished-at desc
 	}
 
 	// ------------------------------------------------------------- leaderboard
@@ -136,13 +139,16 @@ public class Sim2DebriefService {
 			Map<String, Object> r = new LinkedHashMap<>();
 			r.put("runId", t.runId());
 			r.put("teamName", t.teamName());
+			r.put("startedAt", t.startedAt());
+			r.put("finishedAt", t.finishedAt());
 			r.put("scores", t.values());
 			r.putAll(flags(t.runId()));
 			rows.add(r);
 		}
 
 		Map<String, Object> out = new LinkedHashMap<>();
-		out.put("teams", rows);
+		out.put("simulationName", teams.isEmpty() ? null : teams.get(0).simulationName());
+		out.put("teams", rows); // latest finished first
 		out.put("leaderboard", leaderboard(simulationId));
 		return out;
 	}
