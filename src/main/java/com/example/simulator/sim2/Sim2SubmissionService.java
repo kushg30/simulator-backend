@@ -72,33 +72,45 @@ public class Sim2SubmissionService {
 			storedPath = store(runId, roundNumber, file);
 		}
 
-		// --- grade ----------------------------------------------------------
-		Sim2GradingService.GradeResult result = grading.grade(runId, roundNumber, typedAnswer);
-
 		Integer activeSeconds = repository.findActiveSecondsElapsed(runId, roundNumber);
 		Integer durationMin = repository.findRoundDurationMinutes(runId, roundNumber);
 		int active = activeSeconds == null ? 0 : activeSeconds;
 		int duration = durationMin == null ? 0 : durationMin;
 
-		String scoreDetail = "{\"reason\":\"" + escapeJson(result.reason()) + "\",\"answerType\":\""
-				+ escapeJson(result.answerType()) + "\"}";
+		// --- grade (or not, for a free-text round) --------------------------
+		Boolean correct;
+		String scoreDetail;
+		if (grading.isGradable(runId, roundNumber)) {
+			Sim2GradingService.GradeResult result = grading.grade(runId, roundNumber, typedAnswer);
+			correct = result.correct();
+			scoreDetail = "{\"reason\":\"" + escapeJson(result.reason()) + "\",\"answerType\":\""
+					+ escapeJson(result.answerType()) + "\"}";
+			scoring.scoreRound(runId, roundNumber, correct, conf, active, duration);
+		} else {
+			// Free-text consolidation round: no correctness, Turnaround Discipline only.
+			correct = null;
+			scoreDetail = "{\"reason\":\"free-text, not graded\",\"answerType\":\"FREE_TEXT\"}";
+			scoring.scoreRoundNoAnswer(runId, roundNumber, active, duration);
+		}
 
 		repository.insertSubmission(runId, roundNumber, participantId, storedPath, originalName,
-				typedAnswer, conf, active, result.correct(), scoreDetail);
-
-		// --- score the constructs -------------------------------------------
-		scoring.scoreRound(runId, roundNumber, result.correct(), conf, active, duration);
+				typedAnswer, conf, active, correct, scoreDetail);
 		repository.completeRound(runId, roundNumber);
+
+		// The last round triggers the run-level final reveal (Data Trust Score and
+		// Insight Communication, plus the rolled-up means).
+		Integer nextRound = repository.findNextRoundNumber(runId, roundNumber);
+		if (nextRound == null) {
+			scoring.finalizeEngagement(runId);
+		}
 
 		Map<String, Object> response = new LinkedHashMap<>();
 		response.put("roundNumber", roundNumber);
 		response.put("accepted", true);
-		response.put("correct", result.correct());
+		response.put("correct", correct);
 		response.put("activeSecondsUsed", active);
 		response.put("constructs", repository.findConstructScores(runId, roundNumber));
-		// Null once the last round is submitted, which is how the UI knows to show the
-		// final reveal instead of offering another round.
-		response.put("nextRound", repository.findNextRoundNumber(runId, roundNumber));
+		response.put("nextRound", nextRound);
 		return response;
 	}
 
@@ -137,6 +149,9 @@ public class Sim2SubmissionService {
 		out.put("constructs", repository.findConstructScores(runId, roundNumber));
 		out.put("rollup", repository.findConstructRollup(runId));
 		out.put("nextRound", repository.findNextRoundNumber(runId, roundNumber));
+		// Present only once the engagement is complete: the finalised five-construct
+		// reveal (round 0), including the two run-level constructs.
+		out.put("finalReveal", repository.findFinalScores(runId));
 		return out;
 	}
 }

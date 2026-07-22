@@ -380,15 +380,16 @@ public interface Sim2Repository extends org.springframework.data.repository.Repo
 			@Param("roundNumber") int roundNumber);
 
 	/**
-	 * Rollup across rounds. A bypassed round is EXCLUDED from the average rather than counted as
-	 * zero, because it was not attempted rather than failed. Checks both the round status and the
-	 * platform bypass table, so a round bypassed by a facilitator is dropped either way.
+	 * Running rollup across the PLAYED rounds (1..N). A bypassed round is EXCLUDED rather than
+	 * scored zero. Round 0 is the finalised run-level reveal and is deliberately excluded here so
+	 * it is not averaged back into the per-round mean.
 	 */
 	@Query(value = """
 			SELECT cs.construct_name AS "construct", ROUND(AVG(cs.value))::int AS "value"
 			FROM sim2_construct_scores cs
 			JOIN sim2_round_state rs ON rs.run_id = cs.run_id AND rs.round_number = cs.round_number
 			WHERE cs.run_id = :runId
+			  AND cs.round_number > 0
 			  AND cs.status = 'SCORED'
 			  AND rs.status <> 'BYPASSED'
 			  AND NOT EXISTS (SELECT 1 FROM run_round_bypass b
@@ -397,4 +398,51 @@ public interface Sim2Repository extends org.springframework.data.repository.Repo
 			ORDER BY cs.construct_name
 			""", nativeQuery = true)
 	List<Map<String, Object>> findConstructRollup(@Param("runId") UUID runId);
+
+	// =========================================================================
+	// End-of-engagement finalisation (round 0 = the run-level final reveal)
+	// =========================================================================
+
+	/**
+	 * Mean of a per-round construct across the played, non-bypassed rounds. Used to roll the three
+	 * answer-driven constructs up into a single final number.
+	 */
+	@Query(value = """
+			SELECT ROUND(AVG(cs.value))::int
+			FROM sim2_construct_scores cs
+			WHERE cs.run_id = :runId AND cs.round_number > 0
+			  AND cs.construct_name = :constructName AND cs.status = 'SCORED'
+			  AND NOT EXISTS (SELECT 1 FROM run_round_bypass b
+			                   WHERE b.run_id = cs.run_id AND b.round_number = cs.round_number)
+			""", nativeQuery = true)
+	Integer findConstructMean(@Param("runId") UUID runId, @Param("constructName") String constructName);
+
+	/** Whether a round's submitted answer was correct (null if the round was not submitted). */
+	@Query(value = """
+			SELECT is_correct FROM sim2_submissions
+			WHERE run_id = :runId AND round_number = :roundNumber
+			""", nativeQuery = true)
+	Boolean findRoundCorrect(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
+
+	/** The team's chosen twist action for a round (null if not answered / bypassed). */
+	@Query(value = """
+			SELECT de.action
+			FROM decision_events de
+			JOIN decisions d ON d.decision_id = de.decision_id
+			JOIN artifacts a ON a.artifact_id = d.artifact_id
+			JOIN rounds r    ON r.round_id = a.round_id
+			WHERE de.run_id = :runId AND r.round_number = :roundNumber
+			LIMIT 1
+			""", nativeQuery = true)
+	String findRoundAction(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
+
+	/** The finalised run-level reveal: the five constructs stored at round 0. */
+	@Query(value = """
+			SELECT construct_name AS "construct", value AS "value",
+			       status AS "status", detail AS "detail"
+			FROM sim2_construct_scores
+			WHERE run_id = :runId AND round_number = 0
+			ORDER BY construct_name
+			""", nativeQuery = true)
+	List<Map<String, Object>> findFinalScores(@Param("runId") UUID runId);
 }

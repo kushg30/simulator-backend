@@ -58,6 +58,108 @@ public class Sim2ScoringService {
 	}
 
 	/**
+	 * Scores a round that has no canonical answer (Round 6, the free-text consolidation round).
+	 *
+	 * <p>Only Turnaround Discipline can be measured. Analytical Rigor and Judgment Calibration
+	 * depend on an answer check, so they are recorded as NOT_APPLICABLE for this round rather than
+	 * zero, which would misrepresent a round that had nothing to get wrong. Data Trust Score and
+	 * Insight Communication are run-level and are finalised separately at engagement end.
+	 */
+	public void scoreRoundNoAnswer(UUID runId, int roundNumber, int activeSecondsUsed,
+			int roundDurationMinutes) {
+
+		int discipline = discipline(activeSecondsUsed, roundDurationMinutes);
+		repository.upsertConstructScore(runId, roundNumber, TURNAROUND_DISCIPLINE, discipline, "SCORED",
+				"used " + activeSecondsUsed + "s of " + (roundDurationMinutes * 60) + "s active time");
+
+		repository.upsertConstructScore(runId, roundNumber, ANALYTICAL_RIGOR, null, "NOT_APPLICABLE",
+				"Consolidation round has no answer to check");
+		repository.upsertConstructScore(runId, roundNumber, JUDGMENT_CALIBRATION, null, "NOT_APPLICABLE",
+				"No correctness to calibrate against in the free-text round");
+		repository.upsertConstructScore(runId, roundNumber, DATA_TRUST, null, "NOT_APPLICABLE",
+				"Finalised at engagement end, not per round");
+		repository.upsertConstructScore(runId, roundNumber, INSIGHT_COMMUNICATION, null, "NOT_APPLICABLE",
+				"Finalised at engagement end, not per round");
+	}
+
+	/**
+	 * Computes the five final construct scores for the whole run and stores them at round 0.
+	 *
+	 * <p>Three of them roll up the per-round scores. The remaining two - Data Trust Score and
+	 * Insight Communication - are the run-level constructs deferred through Rounds 1-5, and are
+	 * derived here from structured signals already captured (answer-checks and recorded twist
+	 * choices). No file is parsed and no prose is interpreted; every input traces to something in
+	 * the ledger, and each score carries a detail string explaining how it was reached so a
+	 * facilitator can defend or override it.
+	 */
+	public void finalizeEngagement(UUID runId) {
+
+		// --- the three answer-driven constructs: mean across played rounds ---
+		finalizeMean(runId, ANALYTICAL_RIGOR);
+		finalizeMean(runId, JUDGMENT_CALIBRATION);
+		finalizeMean(runId, TURNAROUND_DISCIPLINE);
+
+		// --- Data Trust Score: did the numbers survive without silent breakage? ---
+		int trust = 100;
+		StringBuilder trustWhy = new StringBuilder();
+		Boolean r5 = repository.findRoundCorrect(runId, 5); // fidelity check vs the R3 figure
+		if (Boolean.FALSE.equals(r5)) {
+			trust -= 35;
+			trustWhy.append("R5 fidelity check failed (numbers did not reproduce); ");
+		} else if (r5 == null) {
+			trust -= 15;
+			trustWhy.append("R5 fidelity check not attempted; ");
+		}
+		if (Boolean.FALSE.equals(repository.findRoundCorrect(runId, 3))) {
+			trust -= 15;
+			trustWhy.append("R3 source figure was wrong; ");
+		}
+		if ("DELETE_ROWS".equals(repository.findRoundAction(runId, 1))) {
+			trust -= 20;
+			trustWhy.append("R1 rows deleted (traceability lost); ");
+		}
+		if ("DROP_UNMATCHED".equals(repository.findRoundAction(runId, 4))) {
+			trust -= 20;
+			trustWhy.append("R4 stores dropped (coverage lost); ");
+		}
+		trust = Math.max(0, Math.min(100, trust));
+		repository.upsertConstructScore(runId, 0, DATA_TRUST, trust, "SCORED",
+				trustWhy.length() == 0 ? "Numbers survived across rounds with no breakage signals"
+						: trustWhy.toString().trim());
+
+		// --- Insight Communication: an argument the Board could act on ---
+		// The clearest structured signal is the R3 "keep it to one screen" framing decision.
+		String framing = repository.findRoundAction(runId, 3);
+		int insight;
+		String insightWhy;
+		if ("CUT_TO_ESSENTIAL".equals(framing)) {
+			insight = 100;
+			insightWhy = "R3: cut to essential fields — a clean, Board-actionable summary";
+		} else if ("SHRINK_TO_FIT".equals(framing)) {
+			insight = 60;
+			insightWhy = "R3: shrank everything to fit — readable but not prioritised";
+		} else if ("SPLIT_TWO_SCREENS".equals(framing)) {
+			insight = 25;
+			insightWhy = "R3: split across two screens — ignored the Board's one-screen constraint";
+		} else {
+			insight = 50;
+			insightWhy = "No R3 framing decision on record; neutral default pending facilitator review";
+		}
+		repository.upsertConstructScore(runId, 0, INSIGHT_COMMUNICATION, insight, "SCORED", insightWhy);
+	}
+
+	private void finalizeMean(UUID runId, String construct) {
+		Integer mean = repository.findConstructMean(runId, construct);
+		if (mean != null) {
+			repository.upsertConstructScore(runId, 0, construct, mean, "SCORED",
+					"Mean across played rounds");
+		} else {
+			repository.upsertConstructScore(runId, 0, construct, null, "NOT_APPLICABLE",
+					"No scored rounds to average");
+		}
+	}
+
+	/**
 	 * Confidence x correctness. High-and-wrong is the worst cell in the matrix — it is the exact
 	 * pattern the facilitator debrief is asked to surface. Low-and-right is mildly penalised as
 	 * under-confidence; low-and-wrong is well-calibrated and scores mid.

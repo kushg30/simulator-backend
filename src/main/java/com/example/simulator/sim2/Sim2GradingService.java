@@ -31,6 +31,13 @@ public class Sim2GradingService {
 	public record GradeResult(boolean correct, String answerType, String normalizedAnswer, String reason) {
 	}
 
+	/** True when the round has a canonical answer to check against (i.e. not a free-text round). */
+	public boolean isGradable(UUID runId, int roundNumber) {
+		Map<String, Object> key = repository.findAnswerKey(runId, roundNumber);
+		return key != null && key.get("answerType") != null
+				&& !"FREE_TEXT".equals(String.valueOf(key.get("answerType")));
+	}
+
 	public GradeResult grade(UUID runId, int roundNumber, String typedAnswer) {
 
 		Map<String, Object> key = repository.findAnswerKey(runId, roundNumber);
