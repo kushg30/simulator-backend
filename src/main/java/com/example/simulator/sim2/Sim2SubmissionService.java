@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -26,13 +27,16 @@ public class Sim2SubmissionService {
 	private final Sim2Repository repository;
 	private final Sim2GradingService grading;
 	private final Sim2ScoringService scoring;
+	private final Sim2DebriefService debrief;
 	private final Path uploadDir;
 
 	public Sim2SubmissionService(Sim2Repository repository, Sim2GradingService grading,
-			Sim2ScoringService scoring, @Value("${sim2.upload-dir}") String uploadDir) {
+			Sim2ScoringService scoring, Sim2DebriefService debrief,
+			@Value("${sim2.upload-dir}") String uploadDir) {
 		this.repository = repository;
 		this.grading = grading;
 		this.scoring = scoring;
+		this.debrief = debrief;
 		this.uploadDir = Paths.get(uploadDir);
 	}
 
@@ -155,7 +159,13 @@ public class Sim2SubmissionService {
 		out.put("nextRound", repository.findNextRoundNumber(runId, roundNumber));
 		// Present only once the engagement is complete: the finalised five-construct
 		// reveal (round 0), including the two run-level constructs.
-		out.put("finalReveal", repository.findFinalScores(runId));
+		List<Map<String, Object>> finalReveal = repository.findFinalScores(runId);
+		out.put("finalReveal", finalReveal);
+		// The team's own standing in the cohort per construct. A team only sees where it
+		// sits, not the whole leaderboard; that is faculty-facing.
+		if (!finalReveal.isEmpty()) {
+			out.put("cohortStanding", debrief.teamStanding(repository.findSimulationId(runId), runId));
+		}
 		return out;
 	}
 }

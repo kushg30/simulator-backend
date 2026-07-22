@@ -249,6 +249,9 @@ public interface Sim2Repository extends org.springframework.data.repository.Repo
 			""", nativeQuery = true)
 	String findLeadRole(@Param("runId") UUID runId);
 
+	@Query(value = "SELECT simulation_id FROM simulation_runs WHERE run_id = :runId", nativeQuery = true)
+	UUID findSimulationId(@Param("runId") UUID runId);
+
 	// =========================================================================
 	// Decisions (twists). Records into the shared ledger but deliberately does
 	// NOT apply Sim-1 construct deltas.
@@ -463,4 +466,45 @@ public interface Sim2Repository extends org.springframework.data.repository.Repo
 			ORDER BY construct_name
 			""", nativeQuery = true)
 	List<Map<String, Object>> findFinalScores(@Param("runId") UUID runId);
+
+	// =========================================================================
+	// Cohort debrief (spec section 8) — leaderboard and facilitator flags
+	// =========================================================================
+
+	/**
+	 * Every finalised team of a simulation with its run-level scores. One row per
+	 * (team, construct); the caller pivots and ranks. Only teams that have reached the final
+	 * reveal (round 0 rows) appear, since a mid-engagement team has no cohort standing yet.
+	 */
+	@Query(value = """
+			SELECT sr.run_id        AS "runId",
+			       sr.team_name     AS "teamName",
+			       cs.construct_name AS "construct",
+			       cs.value         AS "value"
+			FROM sim2_construct_scores cs
+			JOIN simulation_runs sr ON sr.run_id = cs.run_id
+			WHERE sr.simulation_id = :simulationId
+			  AND cs.round_number = 0
+			  AND cs.status = 'SCORED'
+			ORDER BY sr.team_name, cs.construct_name
+			""", nativeQuery = true)
+	List<Map<String, Object>> findCohortFinalScores(@Param("simulationId") UUID simulationId);
+
+	/** Rounds a team answered with High confidence but got wrong — a headline debrief flag. */
+	@Query(value = """
+			SELECT round_number
+			FROM sim2_submissions
+			WHERE run_id = :runId AND confidence = 'HIGH' AND is_correct = false
+			ORDER BY round_number
+			""", nativeQuery = true)
+	List<Integer> findHighConfidenceWrongRounds(@Param("runId") UUID runId);
+
+	/** Per-round correctness for a run, for the debrief timeline. */
+	@Query(value = """
+			SELECT round_number AS "roundNumber", is_correct AS "correct", confidence AS "confidence"
+			FROM sim2_submissions
+			WHERE run_id = :runId
+			ORDER BY round_number
+			""", nativeQuery = true)
+	List<Map<String, Object>> findSubmissionTimeline(@Param("runId") UUID runId);
 }
