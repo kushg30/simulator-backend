@@ -32,7 +32,7 @@ public class Sim2SubmissionService {
 
 	public Sim2SubmissionService(Sim2Repository repository, Sim2GradingService grading,
 			Sim2ScoringService scoring, Sim2DebriefService debrief,
-			@Value("${sim2.upload-dir}") String uploadDir) {
+			@Value("${sim2.upload-dir:./uploads}") String uploadDir) {
 		this.repository = repository;
 		this.grading = grading;
 		this.scoring = scoring;

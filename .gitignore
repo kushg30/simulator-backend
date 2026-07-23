@@ -33,9 +33,8 @@ build/
 .vscode/
 
 ### Local configuration & secrets ###
-# Holds DB credentials and machine-specific paths.
-# Copy application.properties.example -> application.properties and fill in locally.
-src/main/resources/application.properties
+# application.properties is committed but contains NO secrets — the datasource
+# password and faculty token come from environment variables. Keep it that way.
 .env
 
 ### Simulator 2 uploads (student workbooks) ###

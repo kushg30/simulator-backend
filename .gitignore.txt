@@ -1,8 +1,0 @@
-target
-.classpath
-.project
-.settings
-.idea
-*.class
-.env
-src/main/resources/application.properties

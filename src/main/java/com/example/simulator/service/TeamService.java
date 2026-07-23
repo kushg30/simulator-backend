@@ -24,7 +24,7 @@ public class TeamService {
     public TeamService(TeamRepository teamRepo,
                        ParticipantRepository participantRepo,
                        SimulationRoleRepository simulationRoleRepo,
-                       @Value("${simulator.default-simulation-id}") String defaultSimulationId) {
+                       @Value("${simulator.default-simulation-id:475db739-0708-48d4-b4db-5a23f1da50d9}") String defaultSimulationId) {
         this.teamRepo = teamRepo;
         this.participantRepo = participantRepo;
         this.simulationRoleRepo = simulationRoleRepo;
