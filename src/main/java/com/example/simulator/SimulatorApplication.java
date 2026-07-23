@@ -7,7 +7,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 @SpringBootApplication
-@EnableJpaRepositories(basePackages = "com.example.simulator.repository")
+// NOTE: repository packages are listed explicitly. A new repository package MUST be
+// added here or its beans will not be found and the application will fail to start.
+@EnableJpaRepositories(basePackages = {
+		"com.example.simulator.repository", // platform + Simulation 1
+		"com.example.simulator.sim2",       // Simulator 2 (Meridian Retail QBR) engine
+		"com.example.simulator.faculty"     // platform-wide faculty control layer
+})
 public class SimulatorApplication {
 
 	 private static final Logger log =

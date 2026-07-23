@@ -31,3 +31,12 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Local configuration & secrets ###
+# application.properties is committed but contains NO secrets — the datasource
+# password and faculty token come from environment variables. Keep it that way.
+.env
+
+### Simulator 2 uploads (student workbooks) ###
+uploads/
+SimulatorUploads/
