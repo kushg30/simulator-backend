@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.Ordered;
 import org.springframework.http.HttpStatus;
 
 import jakarta.servlet.Filter;
@@ -76,6 +77,9 @@ public class FacultyAuthFilter {
 		FilterRegistrationBean<Filter> registration = new FilterRegistrationBean<>(filter);
 		registration.addUrlPatterns(PROTECTED_PREFIX + "/*");
 		registration.setName("facultyTokenFilter");
+		// Run AFTER the CORS filter, so a 401 from here still carries CORS headers and
+		// the browser shows the 401 instead of reporting "failed to fetch".
+		registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 10);
 		return registration;
 	}
 
