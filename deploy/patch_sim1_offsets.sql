@@ -45,4 +45,20 @@ UPDATE public.artifacts SET open_offset_min = 25 WHERE artifact_id = '1d842ccd-0
 UPDATE public.artifacts SET open_offset_min = 27, expiry_offset_min = 30
  WHERE artifact_id = 'f6897622-60dc-4a8c-9141-18fed2ce091a';
 
+-- ----------------------------------------------------------------------------
+-- Role-code alignment. Role selection and simulation_roles use OPERATIONS and
+-- PRODUCT, but three artifacts targeted HEAD_OF_OPERATIONS / HEAD_OF_PRODUCT in
+-- allowed_roles, so those seats never saw their own artifacts. Align the
+-- artifact codes to the roles participants actually hold. Content-based and
+-- ID-independent; only Simulation 1 artifacts carry these codes (HEAD_OF_
+-- ENGINEERING is intentionally left unchanged).
+-- ----------------------------------------------------------------------------
+UPDATE public.artifacts
+   SET allowed_roles = replace(allowed_roles::text, 'HEAD_OF_OPERATIONS', 'OPERATIONS')::jsonb
+ WHERE allowed_roles::text LIKE '%HEAD_OF_OPERATIONS%';
+
+UPDATE public.artifacts
+   SET allowed_roles = replace(allowed_roles::text, 'HEAD_OF_PRODUCT', 'PRODUCT')::jsonb
+ WHERE allowed_roles::text LIKE '%HEAD_OF_PRODUCT%';
+
 COMMIT;
