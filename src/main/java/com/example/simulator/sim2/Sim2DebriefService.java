@@ -192,6 +192,8 @@ public class Sim2DebriefService {
 			r.put("finishedAt", t.finishedAt());
 			r.put("scores", t.values());
 			r.put("overrides", t.overrides()); // construct -> facilitator who overrode it
+			// Per-round correctness for the answer grid: [{roundNumber, correct, confidence}].
+			r.put("submissions", repository.findSubmissionTimeline(t.runId()));
 			r.putAll(flags(t.runId()));
 			rows.add(r);
 		}
