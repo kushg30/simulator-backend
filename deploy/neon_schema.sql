@@ -151,7 +151,7 @@ CREATE TABLE public.faculty_actions (
     note text,
     created_by text,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
-    CONSTRAINT faculty_actions_action_type_check CHECK ((action_type = ANY (ARRAY['PAUSE'::text, 'RESUME'::text, 'DELAY'::text, 'BYPASS'::text, 'INJECT'::text, 'OVERRIDE'::text]))),
+    CONSTRAINT faculty_actions_action_type_check CHECK ((action_type = ANY (ARRAY['PAUSE'::text, 'RESUME'::text, 'DELAY'::text, 'BYPASS'::text, 'INJECT'::text, 'OVERRIDE'::text, 'TERMINATE'::text]))),
     CONSTRAINT faculty_actions_scope_check CHECK ((scope = ANY (ARRAY['ALL'::text, 'TEAM'::text])))
 );
 
@@ -400,7 +400,7 @@ CREATE TABLE public.simulation_runs (
     started_at timestamp without time zone DEFAULT now() NOT NULL,
     status text NOT NULL,
     team_id uuid,
-    CONSTRAINT simulation_runs_status_check CHECK ((status = ANY (ARRAY['ACTIVE'::text, 'COMPLETED'::text])))
+    CONSTRAINT simulation_runs_status_check CHECK ((status = ANY (ARRAY['ACTIVE'::text, 'COMPLETED'::text, 'TERMINATED'::text])))
 );
 
 

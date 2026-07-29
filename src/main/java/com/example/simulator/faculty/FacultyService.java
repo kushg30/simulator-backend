@@ -134,6 +134,18 @@ public class FacultyService {
 				"note", "Excluded from the construct rollup, not scored as zero");
 	}
 
+	// ------------------------------------------------------------- terminate
+
+	/**
+	 * Ends a run for good. Its artifacts stop firing and it drops off the console. Irreversible, so
+	 * the UI guards it behind a typed confirmation; the action is logged for the record.
+	 */
+	public Map<String, Object> terminate(UUID runId, String note, String actor) {
+		repository.terminateRun(runId);
+		log(runId, null, "TERMINATE", "TEAM", null, null, null, note, actor);
+		return Map.of("runId", runId, "terminated", true);
+	}
+
 	// --------------------------------------------------------------- injection
 
 	@Transactional(readOnly = true)
