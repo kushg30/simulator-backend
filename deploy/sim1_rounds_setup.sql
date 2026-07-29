@@ -142,8 +142,118 @@ VALUES
 ('a2000000-0002-4000-a000-000000000021','a2000000-0000-4000-a000-000000000109','GOVERNANCE_OVERSIGHT',2,-2, 2, 0)
 ON CONFLICT (option_id) DO NOTHING;
 
+-- ================================================================= Round 3
+-- "When Alignment Meets Exposure" — external visibility grows; perceived risk.
+INSERT INTO public.rounds (round_id, simulation_id, round_number, duration_minutes)
+VALUES ('a3000000-0000-4000-a000-000000000003','475db739-0708-48d4-b4db-5a23f1da50d9',3,30)
+ON CONFLICT (round_id) DO NOTHING;
+
+INSERT INTO public.artifacts
+  (artifact_id, round_id, artifact_type, open_offset_min, expiry_offset_min, expected_action, payload, allowed_roles)
+VALUES
+('a3000000-0000-4000-a000-000000000001','a3000000-0000-4000-a000-000000000003','MESSAGE_TEXT',0,25,true,
+ '{"tab":"inbox","from":"Regulatory Affairs","title":"Regulatory Pre-Read Request","body":"As part of the upcoming review, regulators have requested a short pre-read summarizing internal governance processes related to analytics classification and escalation. Please confirm whether any recent monitoring discussions should be reflected in this summary.","inner_voice":null}'::jsonb, '["CEO"]'::jsonb),
+('a3000000-0000-4000-a000-000000000002','a3000000-0000-4000-a000-000000000003','EXCERPT',4,27,true,
+ '{"tab":"excerpts","from":"Enterprise Client (VP Risk)","title":"Enterprise Client Informal Query","body":"Unrelated to any specific issue — could you share how anomaly thresholds are internally defined and reviewed?","inner_voice":"No mention of incidents."}'::jsonb, '["PRODUCT"]'::jsonb),
+('a3000000-0000-4000-a000-000000000003','a3000000-0000-4000-a000-000000000003','INTERNAL_NOTE',8,24,true,
+ '{"tab":"inbox","from":"Internal Audit","title":"Internal Audit Check-In","body":"As part of quarterly controls review, we are refreshing documentation trails for analytics oversight. Please confirm if any classification changes occurred this quarter.","inner_voice":null}'::jsonb, '["CFO","CEO"]'::jsonb),
+('a3000000-0000-4000-a000-000000000004','a3000000-0000-4000-a000-000000000003','EXCERPT',12,27,true,
+ '{"tab":"excerpts","title":"#leadership","channel":"#leadership","messages":[{"author":"Lead A","time":"10:20","text":"Are we aligned on what language to use externally?"},{"author":"Lead B","time":"10:22","text":"I am hearing slightly different descriptions across teams."},{"author":"Lead C","time":"10:23","text":"Monitoring and oversight are not the same thing."}],"inner_voice":"No new data."}'::jsonb, NULL),
+('a3000000-0000-4000-a000-000000000005','a3000000-0000-4000-a000-000000000003','INTERNAL_NOTE',16,27,true,
+ '{"tab":"inbox","from":"Board Office","title":"Board Agenda Circulation","subject":"Upcoming Board Discussion — Governance Overview","body":"Agenda Item 3: Analytics oversight and internal classification discipline. No accusation. No concern stated.","inner_voice":null}'::jsonb, '["CEO"]'::jsonb),
+('a3000000-0000-4000-a000-000000000006','a3000000-0000-4000-a000-000000000003','EXCERPT',22,27,true,
+ '{"tab":"excerpts","from":"Analyst Note","title":"Investor Market Commentary","body":"Sector-wide emphasis on analytics governance continues. Most firms report stable controls. Differentiation increasingly tied to clarity of internal escalation frameworks. No reference to the company.","inner_voice":null}'::jsonb, NULL),
+('a3000000-0000-4000-a000-000000000007','a3000000-0000-4000-a000-000000000003','SCREEN_FLASH',27,30,true,
+ '{"tab":"decisions","title":"Round 3 — Team Decision","body":"Given increasing external visibility, how should the organization now position its governance stance? Discuss as a team. CEO submits.","is_final_round_decision":true,"inner_voice":null}'::jsonb, '["CEO"]'::jsonb)
+ON CONFLICT (artifact_id) DO NOTHING;
+
+INSERT INTO public.decisions (decision_id, artifact_id, decision_type, is_final, options, allowed_roles)
+VALUES
+('a3000000-0000-4000-a000-000000000101','a3000000-0000-4000-a000-000000000001','EXPLICIT',false,'[{"id":"INCLUDE_MONITORING","label":"Include structured reference to monitoring discussions"},{"id":"GOVERNANCE_DESC_ONLY","label":"Provide high-level governance description only"},{"id":"DEFER_INCLUSION","label":"Defer inclusion pending internal clarification"}]'::jsonb,'["CEO"]'::jsonb),
+('a3000000-0000-4000-a000-000000000102','a3000000-0000-4000-a000-000000000002','EXPLICIT',false,'[{"id":"SHARE_STANDARD_DOC","label":"Share standard documentation"},{"id":"OFFER_LIVE_CALL","label":"Offer live explanation call"},{"id":"ROUTE_COMPLIANCE","label":"Route inquiry to Compliance"}]'::jsonb,'["PRODUCT"]'::jsonb),
+('a3000000-0000-4000-a000-000000000103','a3000000-0000-4000-a000-000000000003','EXPLICIT',false,'[{"id":"CONFIRM_NO_CHANGE","label":"Confirm no classification change"},{"id":"CONFIRM_MONITORING_ADJ","label":"Confirm monitoring adjustments only"},{"id":"INITIATE_DOC_UPDATE","label":"Initiate formal documentation update"}]'::jsonb,'["CEO"]'::jsonb),
+('a3000000-0000-4000-a000-000000000104','a3000000-0000-4000-a000-000000000004','IMPLICIT',false,'[{"id":"STANDARDIZE_NOW","label":"Standardize language immediately"},{"id":"ALLOW_VARIATION","label":"Allow functional variation"},{"id":"AVOID_ALIGNMENT","label":"Avoid formal alignment"}]'::jsonb,NULL),
+('a3000000-0000-4000-a000-000000000105','a3000000-0000-4000-a000-000000000005','EXPLICIT',false,'[{"id":"EXPAND_AGENDA","label":"Proactively expand agenda discussion"},{"id":"KEEP_HIGH_LEVEL","label":"Keep discussion high-level"},{"id":"REQUEST_REMOVAL","label":"Request removal of item"}]'::jsonb,'["CEO"]'::jsonb),
+('a3000000-0000-4000-a000-000000000106','a3000000-0000-4000-a000-000000000006','IMPLICIT',false,'[{"id":"IGNORE_COMMENTARY","label":"Ignore commentary"},{"id":"CIRCULATE_INTERNALLY","label":"Circulate internally"},{"id":"PREPARE_RESPONSE","label":"Prepare narrative response"}]'::jsonb,NULL),
+('a3000000-0000-4000-a000-000000000107','a3000000-0000-4000-a000-000000000007','EXPLICIT',true,'[{"id":"MAINTAIN_MONITORING","label":"Maintain internal monitoring posture"},{"id":"FORMALIZE_REPORTING","label":"Formalize reporting without escalation"},{"id":"ELEVATE_GOVERNANCE","label":"Elevate governance documentation and board visibility"}]'::jsonb,'["CEO"]'::jsonb)
+ON CONFLICT (decision_id) DO NOTHING;
+
+INSERT INTO public.decision_options (option_id, decision_id, action, trust_delta, risk_delta, ethics_delta, execution_delta)
+VALUES
+('a3000000-0002-4000-a000-000000000001','a3000000-0000-4000-a000-000000000101','INCLUDE_MONITORING',    2,-1, 2, 0),
+('a3000000-0002-4000-a000-000000000002','a3000000-0000-4000-a000-000000000101','GOVERNANCE_DESC_ONLY',  0, 0, 0, 0),
+('a3000000-0002-4000-a000-000000000003','a3000000-0000-4000-a000-000000000101','DEFER_INCLUSION',      -1, 1,-1, 0),
+('a3000000-0002-4000-a000-000000000004','a3000000-0000-4000-a000-000000000102','SHARE_STANDARD_DOC',    1, 0, 1, 0),
+('a3000000-0002-4000-a000-000000000005','a3000000-0000-4000-a000-000000000102','OFFER_LIVE_CALL',       2,-1, 1, 0),
+('a3000000-0002-4000-a000-000000000006','a3000000-0000-4000-a000-000000000102','ROUTE_COMPLIANCE',      0, 0, 1, 0),
+('a3000000-0002-4000-a000-000000000007','a3000000-0000-4000-a000-000000000103','CONFIRM_NO_CHANGE',    -2, 2,-2, 0),
+('a3000000-0002-4000-a000-000000000008','a3000000-0000-4000-a000-000000000103','CONFIRM_MONITORING_ADJ',1, 0, 1, 0),
+('a3000000-0002-4000-a000-000000000009','a3000000-0000-4000-a000-000000000103','INITIATE_DOC_UPDATE',   2,-1, 2, 1),
+('a3000000-0002-4000-a000-000000000010','a3000000-0000-4000-a000-000000000104','STANDARDIZE_NOW',       2,-1, 1, 1),
+('a3000000-0002-4000-a000-000000000011','a3000000-0000-4000-a000-000000000104','ALLOW_VARIATION',      -1, 1,-1, 0),
+('a3000000-0002-4000-a000-000000000012','a3000000-0000-4000-a000-000000000104','AVOID_ALIGNMENT',      -2, 2,-1, 0),
+('a3000000-0002-4000-a000-000000000013','a3000000-0000-4000-a000-000000000105','EXPAND_AGENDA',         2,-1, 2, 0),
+('a3000000-0002-4000-a000-000000000014','a3000000-0000-4000-a000-000000000105','KEEP_HIGH_LEVEL',       0, 0, 0, 0),
+('a3000000-0002-4000-a000-000000000015','a3000000-0000-4000-a000-000000000105','REQUEST_REMOVAL',      -2, 2,-2, 0),
+('a3000000-0002-4000-a000-000000000016','a3000000-0000-4000-a000-000000000106','IGNORE_COMMENTARY',    -1, 1, 0, 0),
+('a3000000-0002-4000-a000-000000000017','a3000000-0000-4000-a000-000000000106','CIRCULATE_INTERNALLY',  1, 0, 1, 0),
+('a3000000-0002-4000-a000-000000000018','a3000000-0000-4000-a000-000000000106','PREPARE_RESPONSE',      0, 0, 0, 1),
+('a3000000-0002-4000-a000-000000000019','a3000000-0000-4000-a000-000000000107','MAINTAIN_MONITORING',  -1, 1,-1, 0),
+('a3000000-0002-4000-a000-000000000020','a3000000-0000-4000-a000-000000000107','FORMALIZE_REPORTING',   1, 0, 1, 0),
+('a3000000-0002-4000-a000-000000000021','a3000000-0000-4000-a000-000000000107','ELEVATE_GOVERNANCE',    2,-2, 2, 1)
+ON CONFLICT (option_id) DO NOTHING;
+
+-- ================================================================= Round 4
+-- "Institutional Memory" — how leadership characterizes its own handling.
+INSERT INTO public.rounds (round_id, simulation_id, round_number, duration_minutes)
+VALUES ('a4000000-0000-4000-a000-000000000004','475db739-0708-48d4-b4db-5a23f1da50d9',4,30)
+ON CONFLICT (round_id) DO NOTHING;
+
+INSERT INTO public.artifacts
+  (artifact_id, round_id, artifact_type, open_offset_min, expiry_offset_min, expected_action, payload, allowed_roles)
+VALUES
+('a4000000-0000-4000-a000-000000000001','a4000000-0000-4000-a000-000000000004','MESSAGE_TEXT',0,22,true,
+ '{"tab":"inbox","from":"Board Chair","title":"Board Question","body":"For clarity ahead of review — at what point does a monitoring matter become governance-relevant within your internal framework? No accusation.","inner_voice":null}'::jsonb,'["CEO"]'::jsonb),
+('a4000000-0000-4000-a000-000000000002','a4000000-0000-4000-a000-000000000004','INTERNAL_NOTE',5,25,true,
+ '{"tab":"inbox","from":"Confidential Summary","title":"Whistle Channel Check","body":"Anonymous inquiry received asking whether classification standards are consistently applied across teams. No formal allegation submitted.","inner_voice":null}'::jsonb,'["CHRO"]'::jsonb),
+('a4000000-0000-4000-a000-000000000003','a4000000-0000-4000-a000-000000000004','MESSAGE_TEXT',10,25,true,
+ '{"tab":"inbox","from":"Regulatory Affairs","title":"Regulator Onsite Clarification","body":"During routine review, regulators requested clarification on how early anomaly discussions are documented and retained. No concern expressed.","inner_voice":null}'::jsonb,'["CEO"]'::jsonb),
+('a4000000-0000-4000-a000-000000000004','a4000000-0000-4000-a000-000000000004','EXCERPT',15,25,true,
+ '{"tab":"excerpts","title":"#leadership","channel":"#leadership","messages":[{"author":"Lead A","time":"16:40","text":"Looking back, did we align early enough?"},{"author":"Lead B","time":"16:41","text":"We did not hide anything."},{"author":"Lead C","time":"16:42","text":"Alignment evolved."}],"inner_voice":"No resolution. No conclusion."}'::jsonb,NULL),
+('a4000000-0000-4000-a000-000000000005','a4000000-0000-4000-a000-000000000004','SCREEN_FLASH',25,30,true,
+ '{"tab":"decisions","title":"Final Decision — Round 4","body":"In retrospect, how should leadership characterize its handling of early ambiguity? Discuss as a team. CEO submits. This ends the simulation.","is_final_round_decision":true,"inner_voice":null}'::jsonb,'["CEO"]'::jsonb)
+ON CONFLICT (artifact_id) DO NOTHING;
+
+INSERT INTO public.decisions (decision_id, artifact_id, decision_type, is_final, options, allowed_roles)
+VALUES
+('a4000000-0000-4000-a000-000000000101','a4000000-0000-4000-a000-000000000001','EXPLICIT',false,'[{"id":"THRESHOLD_ANSWER","label":"Provide threshold-based answer"},{"id":"PRINCIPLE_ANSWER","label":"Provide principle-based answer"},{"id":"CASE_NARRATIVE","label":"Provide case-specific narrative"}]'::jsonb,'["CEO"]'::jsonb),
+('a4000000-0000-4000-a000-000000000102','a4000000-0000-4000-a000-000000000002','EXPLICIT',false,'[{"id":"INITIATE_REVIEW","label":"Initiate review"},{"id":"POLICY_CLARIFICATION","label":"Respond with policy clarification"},{"id":"MONITOR_NO_ACTION","label":"Monitor without action"}]'::jsonb,'["CHRO"]'::jsonb),
+('a4000000-0000-4000-a000-000000000103','a4000000-0000-4000-a000-000000000003','EXPLICIT',false,'[{"id":"FULL_DOC_TRAIL","label":"Provide full documentation trail"},{"id":"SUMMARY_NARRATIVE","label":"Provide summary narrative"},{"id":"FORMAL_ESCALATIONS_ONLY","label":"Provide only formal escalations"}]'::jsonb,'["CEO"]'::jsonb),
+('a4000000-0000-4000-a000-000000000104','a4000000-0000-4000-a000-000000000004','IMPLICIT',false,'[{"id":"REAFFIRM_FRAMEWORK","label":"Reaffirm current framework"},{"id":"ANNOUNCE_REVIEW","label":"Announce framework review"},{"id":"CLOSE_DISCUSSION","label":"Close discussion"}]'::jsonb,NULL),
+('a4000000-0000-4000-a000-000000000105','a4000000-0000-4000-a000-000000000005','EXPLICIT',true,'[{"id":"PROPORTIONAL_RESPONSE","label":"Appropriate proportional response"},{"id":"FRAGMENTED_ALIGNMENT","label":"Cautious but fragmented alignment"},{"id":"UNDERRECOGNIZED_EXPOSURE","label":"Under-recognized governance exposure"}]'::jsonb,'["CEO"]'::jsonb)
+ON CONFLICT (decision_id) DO NOTHING;
+
+INSERT INTO public.decision_options (option_id, decision_id, action, trust_delta, risk_delta, ethics_delta, execution_delta)
+VALUES
+('a4000000-0002-4000-a000-000000000001','a4000000-0000-4000-a000-000000000101','THRESHOLD_ANSWER',       1,-1, 1, 1),
+('a4000000-0002-4000-a000-000000000002','a4000000-0000-4000-a000-000000000101','PRINCIPLE_ANSWER',       1, 0, 1, 0),
+('a4000000-0002-4000-a000-000000000003','a4000000-0000-4000-a000-000000000101','CASE_NARRATIVE',         0, 0, 0, 0),
+('a4000000-0002-4000-a000-000000000004','a4000000-0000-4000-a000-000000000102','INITIATE_REVIEW',        2,-1, 2, 0),
+('a4000000-0002-4000-a000-000000000005','a4000000-0000-4000-a000-000000000102','POLICY_CLARIFICATION',   1, 0, 1, 0),
+('a4000000-0002-4000-a000-000000000006','a4000000-0000-4000-a000-000000000102','MONITOR_NO_ACTION',     -2, 2,-2, 0),
+('a4000000-0002-4000-a000-000000000007','a4000000-0000-4000-a000-000000000103','FULL_DOC_TRAIL',         2,-2, 2, 1),
+('a4000000-0002-4000-a000-000000000008','a4000000-0000-4000-a000-000000000103','SUMMARY_NARRATIVE',      0, 0, 0, 0),
+('a4000000-0002-4000-a000-000000000009','a4000000-0000-4000-a000-000000000103','FORMAL_ESCALATIONS_ONLY',-1,1,-1, 0),
+('a4000000-0002-4000-a000-000000000010','a4000000-0000-4000-a000-000000000104','REAFFIRM_FRAMEWORK',     0, 0, 0, 0),
+('a4000000-0002-4000-a000-000000000011','a4000000-0000-4000-a000-000000000104','ANNOUNCE_REVIEW',        2,-1, 2, 1),
+('a4000000-0002-4000-a000-000000000012','a4000000-0000-4000-a000-000000000104','CLOSE_DISCUSSION',      -1, 1,-1, 0),
+('a4000000-0002-4000-a000-000000000013','a4000000-0000-4000-a000-000000000105','PROPORTIONAL_RESPONSE',  2,-1, 1, 1),
+('a4000000-0002-4000-a000-000000000014','a4000000-0000-4000-a000-000000000105','FRAGMENTED_ALIGNMENT',   0, 1, 0, 0),
+('a4000000-0002-4000-a000-000000000015','a4000000-0000-4000-a000-000000000105','UNDERRECOGNIZED_EXPOSURE',-1,2,-1, 0)
+ON CONFLICT (option_id) DO NOTHING;
+
 -- ----------------------------------------------------------- 5. total rounds
-UPDATE public.simulations SET total_rounds = 2
+UPDATE public.simulations SET total_rounds = 4
  WHERE simulation_id = '475db739-0708-48d4-b4db-5a23f1da50d9';
 
 COMMIT;
