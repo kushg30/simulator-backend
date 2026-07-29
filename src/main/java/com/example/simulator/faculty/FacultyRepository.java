@@ -158,17 +158,21 @@ public interface FacultyRepository extends org.springframework.data.repository.R
 			           sr.simulation_id AS "simulationId",
 			           (SELECT count(*)::int FROM rounds r2
 			             WHERE r2.simulation_id = sr.simulation_id) AS "totalRounds",
-			           1                AS "roundNumber",
-			           'ACTIVE'         AS "roundStatus",
-			           sr.started_at    AS "startedAt",
-			           COALESCE(rc.paused_seconds_total, 0) AS "pausedSecondsTotal",
-			           (rc.paused_at IS NOT NULL)           AS "paused",
+			           COALESCE(s1.round_number, 1)          AS "roundNumber",
+			           'ACTIVE'                              AS "roundStatus",
+			           COALESCE(s1.started_at, sr.started_at) AS "startedAt",
+			           COALESCE(rc.paused_seconds_total, 0)  AS "pausedSecondsTotal",
+			           (rc.paused_at IS NOT NULL)            AS "paused",
 			           EXISTS (SELECT 1 FROM run_round_bypass b
-			                    WHERE b.run_id = sr.run_id AND b.round_number = 1) AS "bypassed",
-			           0::bigint        AS "roundsComplete"
+			                    WHERE b.run_id = sr.run_id
+			                      AND b.round_number = COALESCE(s1.round_number, 1)) AS "bypassed",
+			           (SELECT count(*) FROM sim1_round_state c
+			             WHERE c.run_id = sr.run_id AND c.status = 'COMPLETE') AS "roundsComplete"
 			    FROM simulation_runs sr
 			    JOIN simulations s ON s.simulation_id = sr.simulation_id
-			    LEFT JOIN run_round_clock rc ON rc.run_id = sr.run_id AND rc.round_number = 1
+			    LEFT JOIN sim1_round_state s1 ON s1.run_id = sr.run_id AND s1.status = 'ACTIVE'
+			    LEFT JOIN run_round_clock rc ON rc.run_id = sr.run_id
+			                                AND rc.round_number = COALESCE(s1.round_number, 1)
 			    WHERE sr.status <> 'TERMINATED'
 			      AND NOT EXISTS (SELECT 1 FROM sim2_round_state rs2 WHERE rs2.run_id = sr.run_id)
 			  )

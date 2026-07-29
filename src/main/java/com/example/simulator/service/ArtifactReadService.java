@@ -44,6 +44,25 @@ public class ArtifactReadService {
 		return out;
 	}
 
+	/**
+	 * The run's current round for the round screen: its number, start time and the total round
+	 * count — or {@code completed:true} once the final round's decision has been submitted.
+	 */
+	@Transactional(readOnly = true)
+	public Map<String, Object> getRoundState(UUID runId) {
+		Map<String, Object> active = repository.findSim1ActiveRound(runId);
+		Map<String, Object> out = new LinkedHashMap<>();
+		if (active == null || active.isEmpty()) {
+			out.put("completed", true);
+			return out;
+		}
+		out.put("completed", false);
+		out.put("roundNumber", active.get("roundNumber"));
+		out.put("startedAt", active.get("startedAt"));
+		out.put("totalRounds", active.get("totalRounds"));
+		return out;
+	}
+
 	private VisibleArtifactResponse toResponse(VisibleArtifactView v) {
 
 		// Engine state → UI state normalization

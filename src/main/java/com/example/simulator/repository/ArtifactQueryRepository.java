@@ -31,9 +31,9 @@ public interface ArtifactQueryRepository extends org.springframework.data.reposi
 			  a.payload::text AS payload,
 			  a.expected_action AS expectedAction,
 			  r.round_number AS roundNumber,
-			  (sr.started_at + ((a.open_offset_min + COALESCE(ov.delay_minutes, 0)) || ' minutes')::interval
+			  (rs.started_at + ((a.open_offset_min + COALESCE(ov.delay_minutes, 0)) || ' minutes')::interval
 			                 + (pause.secs || ' seconds')::interval) AS openAt,
-			  (sr.started_at + ((a.expiry_offset_min + COALESCE(ov.delay_minutes, 0)) || ' minutes')::interval
+			  (rs.started_at + ((a.expiry_offset_min + COALESCE(ov.delay_minutes, 0)) || ' minutes')::interval
 			                 + (pause.secs || ' seconds')::interval) AS expiresAt,
 			  d.decision_id AS decisionId,
 			  d.decision_type AS decisionType,
@@ -43,7 +43,7 @@ public interface ArtifactQueryRepository extends org.springframework.data.reposi
 
 			  CASE
 			    WHEN de.decision_event_id IS NOT NULL THEN 'ACTED'
-			    WHEN now() >= (sr.started_at
+			    WHEN now() >= (rs.started_at
 			                   + ((a.expiry_offset_min + COALESCE(ov.delay_minutes, 0)) || ' minutes')::interval
 			                   + (pause.secs || ' seconds')::interval) THEN 'EXPIRED'
 			    WHEN d.decision_id IS NOT NULL THEN 'OPEN'
@@ -56,13 +56,17 @@ public interface ArtifactQueryRepository extends org.springframework.data.reposi
 			  ON rp.run_id = sr.run_id
 			 AND rp.run_participant_id = :participantId
 
-			LEFT JOIN run_round_clock rc ON rc.run_id = sr.run_id AND rc.round_number = 1
+			-- The run's currently-active round; offsets are relative to THIS round's
+			-- start, so each round has its own T+0 timeline (multi-round support).
+			JOIN sim1_round_state rs ON rs.run_id = sr.run_id AND rs.status = 'ACTIVE'
+
+			LEFT JOIN run_round_clock rc ON rc.run_id = sr.run_id AND rc.round_number = rs.round_number
 			CROSS JOIN LATERAL (
 			  SELECT COALESCE(rc.paused_seconds_total, 0)
 			       + COALESCE(EXTRACT(EPOCH FROM (now() - rc.paused_at))::int, 0) AS secs
 			) pause
 
-			JOIN rounds r ON r.simulation_id = sr.simulation_id
+			JOIN rounds r ON r.simulation_id = sr.simulation_id AND r.round_number = rs.round_number
 			JOIN artifacts a ON a.round_id = r.round_id
 
 			LEFT JOIN run_artifact_overrides ov ON ov.run_id = sr.run_id
@@ -102,6 +106,61 @@ public interface ArtifactQueryRepository extends org.springframework.data.reposi
 			""", nativeQuery = true)
 	List<VisibleArtifactView> findVisibleArtifacts(@Param("runId") UUID runId,
 			@Param("participantId") UUID participantId);
+
+	// =========================
+	// Sim 1 multi-round progression (per-round timeline, CEO-gated advancement)
+	// =========================
+
+	/** Activate a round for a run (used when the run starts, and on each advance). */
+	@Modifying
+	@Query(value = """
+			INSERT INTO sim1_round_state (run_id, round_number, status, started_at)
+			VALUES (:runId, :roundNumber, 'ACTIVE', now())
+			ON CONFLICT (run_id, round_number)
+			DO UPDATE SET status = 'ACTIVE', started_at = now()
+			""", nativeQuery = true)
+	void activateSim1Round(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
+
+	@Modifying
+	@Query(value = """
+			UPDATE sim1_round_state SET status = 'COMPLETE'
+			WHERE run_id = :runId AND round_number = :roundNumber
+			""", nativeQuery = true)
+	void completeSim1Round(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
+
+	@Modifying
+	@Query(value = "UPDATE simulation_runs SET status = 'COMPLETED' WHERE run_id = :runId",
+			nativeQuery = true)
+	void completeRun(@Param("runId") UUID runId);
+
+	/** The round a given artifact belongs to. */
+	@Query(value = """
+			SELECT r.round_number FROM artifacts a
+			JOIN rounds r ON r.round_id = a.round_id
+			WHERE a.artifact_id = :artifactId
+			""", nativeQuery = true)
+	Integer findRoundNumberByArtifact(@Param("artifactId") UUID artifactId);
+
+	/** The next round number for a run's simulation after {@code current}, or null if none. */
+	@Query(value = """
+			SELECT MIN(r.round_number) FROM rounds r
+			JOIN simulation_runs sr ON sr.simulation_id = r.simulation_id
+			WHERE sr.run_id = :runId AND r.round_number > :current
+			""", nativeQuery = true)
+	Integer findNextRoundNumber(@Param("runId") UUID runId, @Param("current") int current);
+
+	/** The active round of a run, with its start time and the simulation's round count. */
+	@Query(value = """
+			SELECT rs.round_number AS "roundNumber",
+			       rs.started_at   AS "startedAt",
+			       rs.status       AS "status",
+			       (SELECT count(*)::int FROM rounds r WHERE r.simulation_id = sr.simulation_id) AS "totalRounds"
+			FROM sim1_round_state rs
+			JOIN simulation_runs sr ON sr.run_id = rs.run_id
+			WHERE rs.run_id = :runId AND rs.status = 'ACTIVE'
+			LIMIT 1
+			""", nativeQuery = true)
+	Map<String, Object> findSim1ActiveRound(@Param("runId") UUID runId);
 
 	// =========================
 	// READ: facilitator-injected artifacts for this run (surfaced to students)
