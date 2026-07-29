@@ -28,4 +28,10 @@ public class ArtifactController {
         return service.getVisibleArtifacts(runId, participantId);
     }
 
+    /** Current round of a run (number, start time, total) or completed — for the round screen. */
+    @GetMapping("/{runId}/round-state")
+    public Map<String, Object> roundState(@PathVariable UUID runId) {
+        return service.getRoundState(runId);
+    }
+
 }

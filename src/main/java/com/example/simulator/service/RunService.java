@@ -19,6 +19,10 @@ public class RunService {
 	private final TeamRepository teamRepo;
 	private final TeamService teamService;
 
+	/** Simulator 2 (Meridian) manages its own round state; other sims use sim1_round_state. */
+	private static final UUID MERIDIAN_SIMULATION_ID =
+			UUID.fromString("5116d200-0000-4000-a000-000000000002");
+
 	public RunService(ArtifactQueryRepository repository, TeamRepository teamRepo, TeamService teamService) {
 		this.repository = repository;
 		this.teamRepo = teamRepo;
@@ -68,6 +72,12 @@ public class RunService {
 				continue;
 
 			repository.addParticipant(runId, participantId, role);
+		}
+
+		// Offset-based simulations (Simulation 1) track progress via sim1_round_state so
+		// each round gets its own timeline; Sim 2 uses sim2_round_state and is skipped.
+		if (!MERIDIAN_SIMULATION_ID.equals(simulationId)) {
+			repository.activateSim1Round(runId, 1);
 		}
 
 		return Map.of("runId", runId);
