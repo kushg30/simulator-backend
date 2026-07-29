@@ -61,4 +61,32 @@ UPDATE public.artifacts
    SET allowed_roles = replace(allowed_roles::text, 'HEAD_OF_PRODUCT', 'PRODUCT')::jsonb
  WHERE allowed_roles::text LIKE '%HEAD_OF_PRODUCT%';
 
+-- ----------------------------------------------------------------------------
+-- Decision-visibility fix. Two artifacts were visible to a role that could not
+-- actually take the decision (the decision.allowed_roles is a single role), so
+-- that extra role saw the buttons and got "decision failed" on submit. Per the
+-- scenario script both are single-role, so tighten the artifact to match:
+--   Board Message  -> CEO only  (was CEO + CFO)
+--   Pulse & Exit   -> CHRO only (was CHRO + CEO)
+-- ----------------------------------------------------------------------------
+UPDATE public.artifacts SET allowed_roles = '["CEO"]'::jsonb
+ WHERE artifact_id = 'ddf4035d-c7ee-4ca5-bae0-21d282363447';
+UPDATE public.artifacts SET allowed_roles = '["CHRO"]'::jsonb
+ WHERE artifact_id = '46b6212f-280d-488d-8980-426914e09877';
+
+-- ----------------------------------------------------------------------------
+-- Faculty control support: allow a run to be TERMINATED, and log a TERMINATE
+-- action. Both are new enum values guarded by CHECK constraints, so widen them.
+-- Idempotent (DROP IF EXISTS then ADD).
+-- ----------------------------------------------------------------------------
+ALTER TABLE public.simulation_runs DROP CONSTRAINT IF EXISTS simulation_runs_status_check;
+ALTER TABLE public.simulation_runs ADD  CONSTRAINT simulation_runs_status_check
+  CHECK (status = ANY (ARRAY['ACTIVE'::text, 'COMPLETED'::text, 'TERMINATED'::text]));
+
+ALTER TABLE public.faculty_actions DROP CONSTRAINT IF EXISTS faculty_actions_action_type_check;
+ALTER TABLE public.faculty_actions ADD  CONSTRAINT faculty_actions_action_type_check
+  CHECK (action_type = ANY (ARRAY['PAUSE'::text, 'RESUME'::text, 'DELAY'::text,
+                                  'BYPASS'::text, 'INJECT'::text, 'OVERRIDE'::text,
+                                  'TERMINATE'::text]));
+
 COMMIT;

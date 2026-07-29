@@ -189,6 +189,7 @@ public interface Sim2Repository extends org.springframework.data.repository.Repo
 			WHERE rs.run_id = :runId
 			  AND rs.round_number = :roundNumber
 			  AND rs.status = 'ACTIVE'
+			  AND sr.status <> 'TERMINATED'
 			  AND now() >= (rs.started_at
 			                + ((a.open_offset_min + COALESCE(ov.delay_minutes, 0)) || ' minutes')::interval
 			                + (pause.secs || ' seconds')::interval)

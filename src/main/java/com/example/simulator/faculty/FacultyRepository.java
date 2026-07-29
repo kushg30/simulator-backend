@@ -65,8 +65,21 @@ public interface FacultyRepository extends org.springframework.data.repository.R
 			FROM sim2_round_state rs
 			JOIN simulation_runs sr ON sr.run_id = rs.run_id
 			WHERE sr.simulation_id = :simulationId AND rs.status = 'ACTIVE'
+			  AND sr.status <> 'TERMINATED'
+			UNION ALL
+			SELECT sr.run_id AS "runId", 1 AS "roundNumber", sr.team_name AS "teamName"
+			FROM simulation_runs sr
+			WHERE sr.simulation_id = :simulationId
+			  AND sr.status <> 'TERMINATED'
+			  AND NOT EXISTS (SELECT 1 FROM sim2_round_state rs2 WHERE rs2.run_id = sr.run_id)
 			""", nativeQuery = true)
 	List<Map<String, Object>> findActiveRounds(@Param("simulationId") UUID simulationId);
+
+	/** Ends a run entirely: it stops appearing in the console and its artifacts stop firing. */
+	@Modifying
+	@Query(value = "UPDATE simulation_runs SET status = 'TERMINATED' WHERE run_id = :runId",
+			nativeQuery = true)
+	void terminateRun(@Param("runId") UUID runId);
 
 	@Query(value = "SELECT simulation_id FROM simulation_runs WHERE run_id = :runId", nativeQuery = true)
 	UUID findSimulationId(@Param("runId") UUID runId);
@@ -105,32 +118,60 @@ public interface FacultyRepository extends org.springframework.data.repository.R
 	 * earlier version emitted a row per (team, round) pair, which made a team on round 5 appear
 	 * five times. Live teams sort to the top since those are the ones that can be acted on.
 	 */
+	// One row per team, for every simulation. The first branch handles engines
+	// backed by sim2_round_state (Simulator 2); the second handles Simulation 1
+	// (and any legacy run) which has a single offset-based round — surfaced here
+	// as round 1 so the same pause/delay/bypass/terminate controls apply.
 	@Query(value = """
 			SELECT * FROM (
-			  SELECT DISTINCT ON (sr.run_id)
-			         sr.run_id        AS "runId",
-			         sr.team_name     AS "teamName",
-			         s.name           AS "simulationName",
-			         sr.simulation_id AS "simulationId",
-			         s.total_rounds   AS "totalRounds",
-			         rs.round_number  AS "roundNumber",
-			         rs.status        AS "roundStatus",
-			         rs.started_at    AS "startedAt",
-			         COALESCE(rc.paused_seconds_total, 0) AS "pausedSecondsTotal",
-			         (rc.paused_at IS NOT NULL)           AS "paused",
-			         EXISTS (SELECT 1 FROM run_round_bypass b
-			                  WHERE b.run_id = sr.run_id AND b.round_number = rs.round_number) AS "bypassed",
-			         (SELECT count(*) FROM sim2_round_state c
-			           WHERE c.run_id = sr.run_id AND c.status = 'COMPLETE') AS "roundsComplete"
-			  FROM simulation_runs sr
-			  JOIN simulations s ON s.simulation_id = sr.simulation_id
-			  JOIN sim2_round_state rs ON rs.run_id = sr.run_id
-			  LEFT JOIN run_round_clock rc ON rc.run_id = rs.run_id
-			                              AND rc.round_number = rs.round_number
-			  ORDER BY sr.run_id,
-			           -- prefer the round in play, then the furthest one reached
-			           CASE rs.status WHEN 'ACTIVE' THEN 0 WHEN 'PENDING' THEN 1 ELSE 2 END,
-			           rs.round_number DESC
+			  (
+			    SELECT DISTINCT ON (sr.run_id)
+			           sr.run_id        AS "runId",
+			           sr.team_name     AS "teamName",
+			           s.name           AS "simulationName",
+			           sr.simulation_id AS "simulationId",
+			           s.total_rounds   AS "totalRounds",
+			           rs.round_number  AS "roundNumber",
+			           rs.status        AS "roundStatus",
+			           rs.started_at    AS "startedAt",
+			           COALESCE(rc.paused_seconds_total, 0) AS "pausedSecondsTotal",
+			           (rc.paused_at IS NOT NULL)           AS "paused",
+			           EXISTS (SELECT 1 FROM run_round_bypass b
+			                    WHERE b.run_id = sr.run_id AND b.round_number = rs.round_number) AS "bypassed",
+			           (SELECT count(*) FROM sim2_round_state c
+			             WHERE c.run_id = sr.run_id AND c.status = 'COMPLETE') AS "roundsComplete"
+			    FROM simulation_runs sr
+			    JOIN simulations s ON s.simulation_id = sr.simulation_id
+			    JOIN sim2_round_state rs ON rs.run_id = sr.run_id
+			    LEFT JOIN run_round_clock rc ON rc.run_id = rs.run_id
+			                                AND rc.round_number = rs.round_number
+			    WHERE sr.status <> 'TERMINATED'
+			    ORDER BY sr.run_id,
+			             CASE rs.status WHEN 'ACTIVE' THEN 0 WHEN 'PENDING' THEN 1 ELSE 2 END,
+			             rs.round_number DESC
+			  )
+			  UNION ALL
+			  (
+			    SELECT sr.run_id        AS "runId",
+			           sr.team_name     AS "teamName",
+			           s.name           AS "simulationName",
+			           sr.simulation_id AS "simulationId",
+			           (SELECT count(*)::int FROM rounds r2
+			             WHERE r2.simulation_id = sr.simulation_id) AS "totalRounds",
+			           1                AS "roundNumber",
+			           'ACTIVE'         AS "roundStatus",
+			           sr.started_at    AS "startedAt",
+			           COALESCE(rc.paused_seconds_total, 0) AS "pausedSecondsTotal",
+			           (rc.paused_at IS NOT NULL)           AS "paused",
+			           EXISTS (SELECT 1 FROM run_round_bypass b
+			                    WHERE b.run_id = sr.run_id AND b.round_number = 1) AS "bypassed",
+			           0::bigint        AS "roundsComplete"
+			    FROM simulation_runs sr
+			    JOIN simulations s ON s.simulation_id = sr.simulation_id
+			    LEFT JOIN run_round_clock rc ON rc.run_id = sr.run_id AND rc.round_number = 1
+			    WHERE sr.status <> 'TERMINATED'
+			      AND NOT EXISTS (SELECT 1 FROM sim2_round_state rs2 WHERE rs2.run_id = sr.run_id)
+			  )
 			) t
 			ORDER BY (t."roundStatus" = 'ACTIVE') DESC, t."teamName"
 			LIMIT 100

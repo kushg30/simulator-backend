@@ -49,6 +49,12 @@ public class FacultyController {
 		return service.status(runId, roundNumber);
 	}
 
+	@PostMapping("/runs/{runId}/terminate")
+	public Map<String, Object> terminate(@PathVariable UUID runId,
+			@RequestBody(required = false) Map<String, String> body) {
+		return service.terminate(runId, note(body), actor(body));
+	}
+
 	// -------------------------------------------------------- scope: all teams
 
 	@PostMapping("/simulations/{simulationId}/pause-all")

@@ -19,6 +19,11 @@ public interface ArtifactQueryRepository extends org.springframework.data.reposi
 	// =========================
 	// READ: visible artifacts
 	// =========================
+	// Offsets are relative to the run start, shifted by any faculty pause
+	// (run_round_clock, round 1) and per-artifact delay (run_artifact_overrides),
+	// mirroring the Simulator 2 read path so the shared faculty controls actually
+	// take effect on Simulation 1 too. Bypassed artifacts and terminated runs
+	// drop out entirely.
 	@Query(value = """
 			SELECT
 			  a.artifact_id AS artifactId,
@@ -26,8 +31,10 @@ public interface ArtifactQueryRepository extends org.springframework.data.reposi
 			  a.payload::text AS payload,
 			  a.expected_action AS expectedAction,
 			  r.round_number AS roundNumber,
-			  (sr.started_at + (a.open_offset_min || ' minutes')::interval) AS openAt,
-			  (sr.started_at + (a.expiry_offset_min || ' minutes')::interval) AS expiresAt,
+			  (sr.started_at + ((a.open_offset_min + COALESCE(ov.delay_minutes, 0)) || ' minutes')::interval
+			                 + (pause.secs || ' seconds')::interval) AS openAt,
+			  (sr.started_at + ((a.expiry_offset_min + COALESCE(ov.delay_minutes, 0)) || ' minutes')::interval
+			                 + (pause.secs || ' seconds')::interval) AS expiresAt,
 			  d.decision_id AS decisionId,
 			  d.decision_type AS decisionType,
 			  d.options::text AS decisionOptions,
@@ -36,7 +43,9 @@ public interface ArtifactQueryRepository extends org.springframework.data.reposi
 
 			  CASE
 			    WHEN de.decision_event_id IS NOT NULL THEN 'ACTED'
-			    WHEN now() >= (sr.started_at + (a.expiry_offset_min || ' minutes')::interval) THEN 'EXPIRED'
+			    WHEN now() >= (sr.started_at
+			                   + ((a.expiry_offset_min + COALESCE(ov.delay_minutes, 0)) || ' minutes')::interval
+			                   + (pause.secs || ' seconds')::interval) THEN 'EXPIRED'
 			    WHEN d.decision_id IS NOT NULL THEN 'OPEN'
 			    ELSE 'READ_ONLY'
 			  END AS actionState
@@ -47,8 +56,17 @@ public interface ArtifactQueryRepository extends org.springframework.data.reposi
 			  ON rp.run_id = sr.run_id
 			 AND rp.run_participant_id = :participantId
 
+			LEFT JOIN run_round_clock rc ON rc.run_id = sr.run_id AND rc.round_number = 1
+			CROSS JOIN LATERAL (
+			  SELECT COALESCE(rc.paused_seconds_total, 0)
+			       + COALESCE(EXTRACT(EPOCH FROM (now() - rc.paused_at))::int, 0) AS secs
+			) pause
+
 			JOIN rounds r ON r.simulation_id = sr.simulation_id
 			JOIN artifacts a ON a.round_id = r.round_id
+
+			LEFT JOIN run_artifact_overrides ov ON ov.run_id = sr.run_id
+			                                   AND ov.artifact_id = a.artifact_id
 
 			LEFT JOIN decisions d ON d.artifact_id = a.artifact_id
 
@@ -58,7 +76,9 @@ public interface ArtifactQueryRepository extends org.springframework.data.reposi
 			 AND de.run_participant_id = :participantId
 
 			WHERE sr.run_id = :runId
-			
+			AND sr.status <> 'TERMINATED'
+			AND COALESCE(ov.bypassed, false) = false
+
 			AND NOT EXISTS (
 				    SELECT 1
 				    FROM artifact_conditions ac
