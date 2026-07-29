@@ -104,6 +104,21 @@ public interface ArtifactQueryRepository extends org.springframework.data.reposi
 			@Param("participantId") UUID participantId);
 
 	// =========================
+	// READ: facilitator-injected artifacts for this run (surfaced to students)
+	// =========================
+	@Query(value = """
+			SELECT injection_id AS "injectionId",
+			       round_number AS "roundNumber",
+			       title        AS "title",
+			       content      AS "content",
+			       injected_at  AS "injectedAt"
+			FROM run_injected_artifacts
+			WHERE run_id = :runId
+			ORDER BY injected_at
+			""", nativeQuery = true)
+	List<Map<String, Object>> findInjectedArtifacts(@Param("runId") UUID runId);
+
+	// =========================
 	// READ: participant role
 	// =========================
 	@Query(value = """
