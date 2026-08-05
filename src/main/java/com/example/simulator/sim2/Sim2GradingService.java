@@ -57,11 +57,55 @@ public class Sim2GradingService {
 
 		return switch (answerType) {
 			case "NUMERIC" -> gradeNumeric(submitted, canonical, tolAbs, tolPct);
+			// v2 Round 1 asks for two figures in one answer (revenue AND count); both must match.
+			case "NUMERIC_MULTI" -> gradeNumericMulti(submitted, canonical);
 			case "CHOICE" -> new GradeResult(submitted.equalsIgnoreCase(canonical), answerType, submitted,
 					"exact choice match");
-			default -> new GradeResult(normalizeText(submitted).equals(normalizeText(canonical)), answerType,
-					submitted, "normalized text match");
+			default -> gradeText(submitted, canonical);
 		};
+	}
+
+	/**
+	 * Every expected figure in a semicolon-separated canonical (e.g. "62667;59") must appear among the
+	 * numbers found in the submitted answer, so "Bluetooth 62,667 / Refunds 59" grades correct.
+	 */
+	private GradeResult gradeNumericMulti(String submitted, String canonical) {
+		List<BigDecimal> found = new ArrayList<>();
+		try {
+			found.add(new BigDecimal(stripNumericNoise(submitted)));
+		} catch (NumberFormatException ignored) {
+			// fall through to extraction
+		}
+		found.addAll(extractNumbers(submitted));
+
+		List<String> missing = new ArrayList<>();
+		for (String part : canonical.split(";")) {
+			BigDecimal expected;
+			try {
+				expected = new BigDecimal(stripNumericNoise(part));
+			} catch (NumberFormatException e) {
+				continue;
+			}
+			boolean hit = found.stream().anyMatch(n -> n.compareTo(expected) == 0);
+			if (!hit) {
+				missing.add(expected.toPlainString());
+			}
+		}
+		boolean ok = missing.isEmpty();
+		return new GradeResult(ok, "NUMERIC_MULTI", submitted,
+				ok ? "all figures matched" : "missing figure(s): " + String.join(", ", missing));
+	}
+
+	/**
+	 * Lenient text check: the canonical phrase must appear in the submission after normalising, so a
+	 * category name grades correct even when the student adds the supporting figure ("Beauty & Personal
+	 * Care, 56.99%"). Handles the "&" vs "and" and punctuation variations.
+	 */
+	private GradeResult gradeText(String submitted, String canonical) {
+		String s = normalizeText(submitted);
+		String c = normalizeText(canonical);
+		boolean ok = !c.isEmpty() && (s.equals(c) || s.contains(c));
+		return new GradeResult(ok, "TEXT", submitted, ok ? "text match" : "no match");
 	}
 
 	private GradeResult gradeNumeric(String submitted, String canonical, BigDecimal tolAbs, BigDecimal tolPct) {
@@ -137,7 +181,11 @@ public class Sim2GradingService {
 	}
 
 	private String normalizeText(String s) {
-		return s.trim().toLowerCase().replaceAll("\\s+", " ");
+		return s.toLowerCase()
+				.replace("&", " and ")
+				.replaceAll("[^a-z0-9 ]", " ")
+				.replaceAll("\\s+", " ")
+				.trim();
 	}
 
 	private BigDecimal toDecimal(Object o) {
