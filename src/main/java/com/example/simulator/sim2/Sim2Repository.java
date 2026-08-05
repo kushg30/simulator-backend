@@ -458,6 +458,18 @@ public interface Sim2Repository extends org.springframework.data.repository.Repo
 			""", nativeQuery = true)
 	String findRoundAction(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
 
+	/** Teams in a simulation that have completed a given round — for the partial leaderboard reveal. */
+	@Query(value = """
+			SELECT sr.run_id AS "runId", sr.team_name AS "teamName"
+			FROM simulation_runs sr
+			JOIN sim2_round_state rs ON rs.run_id = sr.run_id
+			                        AND rs.round_number = :roundNumber
+			                        AND rs.status = 'COMPLETE'
+			WHERE sr.simulation_id = :simulationId AND sr.status <> 'TERMINATED'
+			""", nativeQuery = true)
+	List<Map<String, Object>> findRunsCompletedRound(@Param("simulationId") UUID simulationId,
+			@Param("roundNumber") int roundNumber);
+
 	/** The finalised run-level reveal: the five constructs stored at round 0, with override provenance. */
 	@Query(value = """
 			SELECT construct_name AS "construct", value AS "value",

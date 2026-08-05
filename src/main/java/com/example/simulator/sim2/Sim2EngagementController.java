@@ -21,9 +21,17 @@ import org.springframework.web.bind.annotation.RestController;
 public class Sim2EngagementController {
 
 	private final Sim2EngagementRepository repository;
+	private final Sim2DebriefService debrief;
 
-	public Sim2EngagementController(Sim2EngagementRepository repository) {
+	public Sim2EngagementController(Sim2EngagementRepository repository, Sim2DebriefService debrief) {
 		this.repository = repository;
+		this.debrief = debrief;
+	}
+
+	/** Partial Leaderboard reveal (Data Trust + Turnaround only) shown between Rounds 2 and 3. */
+	@GetMapping("/simulations/{simulationId}/partial-leaderboard")
+	public Map<String, Object> partialLeaderboard(@PathVariable UUID simulationId) {
+		return debrief.partialLeaderboard(simulationId);
 	}
 
 	/** Latest broadcast for a simulation; clients show it once (tracked client-side by id). */
