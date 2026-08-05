@@ -114,13 +114,15 @@ public class Sim2ScoringService {
 			trust -= 15;
 			trustWhy.append("R3 source figure was wrong; ");
 		}
-		if ("DELETE_ROWS".equals(repository.findRoundAction(runId, 1))) {
+		// v2 twist: applying the deduction to ALL sales (incl. in-store) corrupts every
+		// category margin downstream — the clearest data-integrity break in the run.
+		if ("APPLY_TO_ALL_SALES".equals(repository.findRoundAction(runId, 2))) {
 			trust -= 20;
-			trustWhy.append("R1 rows deleted (traceability lost); ");
+			trustWhy.append("R2 deduction applied to all sales incl. in-store (margins corrupted); ");
 		}
-		if ("DROP_UNMATCHED".equals(repository.findRoundAction(runId, 4))) {
-			trust -= 20;
-			trustWhy.append("R4 stores dropped (coverage lost); ");
+		if (Boolean.FALSE.equals(repository.findRoundCorrect(runId, 2))) {
+			trust -= 10;
+			trustWhy.append("R2 margin figure was wrong; ");
 		}
 		trust = Math.max(0, Math.min(100, trust));
 		repository.upsertConstructScore(runId, 0, DATA_TRUST, trust, "SCORED",

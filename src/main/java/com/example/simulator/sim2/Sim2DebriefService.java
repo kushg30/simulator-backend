@@ -94,6 +94,53 @@ public class Sim2DebriefService {
 		return out;
 	}
 
+	/**
+	 * Partial reveal shown between Rounds 2 and 3: Data Trust (running/provisional) and Turnaround
+	 * Discipline only, ranked across every team that has completed Round 2. The other three
+	 * constructs and the final rank stay hidden until the end. Data Trust here is provisional —
+	 * derived from the data-quality signals available so far (the R2 SKU-twist resolution and the
+	 * R1/R2 answer-checks); the final Data Trust adds the later-round signals.
+	 */
+	public Map<String, Object> partialLeaderboard(UUID simulationId) {
+		List<Map<String, Object>> rows = new ArrayList<>();
+		for (Map<String, Object> run : repository.findRunsCompletedRound(simulationId, 2)) {
+			UUID runId = (UUID) run.get("runId");
+			int trust = 100;
+			if ("APPLY_TO_ALL_SALES".equals(repository.findRoundAction(runId, 2))) {
+				trust -= 20;
+			}
+			if (Boolean.FALSE.equals(repository.findRoundCorrect(runId, 1))) {
+				trust -= 15;
+			}
+			if (Boolean.FALSE.equals(repository.findRoundCorrect(runId, 2))) {
+				trust -= 15;
+			}
+			trust = Math.max(0, Math.min(100, trust));
+			Integer turnaround = repository.findConstructMean(runId, Sim2ScoringService.TURNAROUND_DISCIPLINE);
+
+			Map<String, Object> r = new LinkedHashMap<>();
+			r.put("teamName", run.get("teamName"));
+			r.put("dataTrust", trust);
+			r.put("turnaround", turnaround);
+			rows.add(r);
+		}
+		rows.sort((a, b) -> {
+			int c = Integer.compare((int) b.get("dataTrust"), (int) a.get("dataTrust"));
+			if (c != 0) {
+				return c;
+			}
+			int ta = a.get("turnaround") == null ? 0 : (int) a.get("turnaround");
+			int tb = b.get("turnaround") == null ? 0 : (int) b.get("turnaround");
+			return Integer.compare(tb, ta);
+		});
+		for (int i = 0; i < rows.size(); i++) {
+			rows.get(i).put("rank", i + 1);
+		}
+		Map<String, Object> out = new LinkedHashMap<>();
+		out.put("teams", rows);
+		return out;
+	}
+
 	/** Where one team sits in the cohort, per construct: value, rank of N, and percentile. */
 	public List<Map<String, Object>> teamStanding(UUID simulationId, UUID runId) {
 		List<TeamScores> teams = cohort(simulationId);
@@ -215,16 +262,14 @@ public class Sim2DebriefService {
 	 * same recorded signals that produced the final score.
 	 */
 	public Map<String, Object> flags(UUID runId) {
-		// Rounds that damaged data trust, in order.
+		// Rounds that damaged data trust, in order (v2 signals).
 		List<Integer> dropRounds = new ArrayList<>();
-		if ("DELETE_ROWS".equals(repository.findRoundAction(runId, 1))) {
-			dropRounds.add(1);
+		if ("APPLY_TO_ALL_SALES".equals(repository.findRoundAction(runId, 2))
+				|| Boolean.FALSE.equals(repository.findRoundCorrect(runId, 2))) {
+			dropRounds.add(2);
 		}
 		if (Boolean.FALSE.equals(repository.findRoundCorrect(runId, 3))) {
 			dropRounds.add(3);
-		}
-		if ("DROP_UNMATCHED".equals(repository.findRoundAction(runId, 4))) {
-			dropRounds.add(4);
 		}
 		if (Boolean.FALSE.equals(repository.findRoundCorrect(runId, 5))) {
 			dropRounds.add(5);
