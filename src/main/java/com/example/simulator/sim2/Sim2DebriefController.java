@@ -24,9 +24,25 @@ import org.springframework.web.bind.annotation.RestController;
 public class Sim2DebriefController {
 
 	private final Sim2DebriefService debrief;
+	private final Sim2EngagementRepository engagement;
 
-	public Sim2DebriefController(Sim2DebriefService debrief) {
+	public Sim2DebriefController(Sim2DebriefService debrief, Sim2EngagementRepository engagement) {
 		this.debrief = debrief;
+		this.engagement = engagement;
+	}
+
+	/** Facilitator triggers a Breaking News broadcast to every team in the simulation. */
+	@PostMapping("/simulations/{simulationId}/broadcast")
+	@org.springframework.transaction.annotation.Transactional
+	public ResponseEntity<?> broadcast(@PathVariable UUID simulationId,
+			@RequestBody(required = false) Map<String, Object> body) {
+		String message = (body == null || body.get("message") == null)
+				? "BREAKING: A competing retailer has just announced a festive discount campaign across South and West India."
+				: String.valueOf(body.get("message"));
+		String actor = (body == null || body.get("actor") == null) ? "facilitator"
+				: String.valueOf(body.get("actor"));
+		engagement.insertBroadcast(simulationId, "BREAKING_NEWS", message, actor);
+		return ResponseEntity.ok(Map.of("simulationId", simulationId, "sent", true));
 	}
 
 	/** Full debrief for a simulation: every finalised team, its flags, and the leaderboard. */
