@@ -41,6 +41,38 @@ public class Sim2EngagementController {
 		return b == null ? Map.of() : b;
 	}
 
+	// v3 Breaking News variants (from the video brief), tied to the team's R2 answer.
+	private static final String BREAKING_TRAINING =
+			"Quick update — I just got budget approval to fund additional manager training for the West "
+					+ "region, based on what you flagged. That's moving forward. Keep going.";
+	private static final String BREAKING_MARKET =
+			"Heads up — one of our board members just pushed back on the market explanation for West's "
+					+ "numbers. She wants to know why training hours weren't considered. Worth keeping in mind.";
+
+	/**
+	 * Run-scoped broadcast: the same trigger, but the Breaking News message is personalised to the
+	 * team's Round 2 answer — a training/execution team hears the training budget was approved, a
+	 * market/environment team hears a board member push back. Falls back to the training variant when
+	 * the R2 answer is unknown (per the video brief's "ship Variant A to everyone" fallback).
+	 */
+	@GetMapping("/runs/{runId}/broadcast")
+	public Map<String, Object> runBroadcast(@PathVariable UUID runId) {
+		UUID sim = repository.findSimulationId(runId);
+		if (sim == null) {
+			return Map.of();
+		}
+		Map<String, Object> b = repository.findLatestBroadcast(sim);
+		if (b == null || b.isEmpty()) {
+			return Map.of();
+		}
+		String r2 = repository.findRound2Answer(runId);
+		String lower = r2 == null ? "" : r2.toLowerCase();
+		boolean market = lower.contains("market") && !lower.contains("training");
+		java.util.Map<String, Object> out = new java.util.LinkedHashMap<>(b);
+		out.put("message", market ? BREAKING_MARKET : BREAKING_TRAINING);
+		return out;
+	}
+
 	/** Record the team's one-line Emergency Board Call response (ungraded, one per round). */
 	@PostMapping("/runs/{runId}/board-call")
 	@Transactional
