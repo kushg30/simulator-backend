@@ -57,11 +57,9 @@ public class Sim2EngagementController {
 	 */
 	@GetMapping("/runs/{runId}/broadcast")
 	public Map<String, Object> runBroadcast(@PathVariable UUID runId) {
-		UUID sim = repository.findSimulationId(runId);
-		if (sim == null) {
-			return Map.of();
-		}
-		Map<String, Object> b = repository.findLatestBroadcast(sim);
+		// Only broadcasts sent AFTER this run started — a leftover broadcast never
+		// fires for a team that started later.
+		Map<String, Object> b = repository.findLatestBroadcastForRun(runId);
 		if (b == null || b.isEmpty()) {
 			return Map.of();
 		}
