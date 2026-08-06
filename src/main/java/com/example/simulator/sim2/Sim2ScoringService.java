@@ -129,25 +129,12 @@ public class Sim2ScoringService {
 				trustWhy.length() == 0 ? "Numbers survived across rounds with no breakage signals"
 						: trustWhy.toString().trim());
 
-		// --- Insight Communication: an argument the Board could act on ---
-		// The clearest structured signal is the R3 "keep it to one screen" framing decision.
-		String framing = repository.findRoundAction(runId, 3);
-		int insight;
-		String insightWhy;
-		if ("CUT_TO_ESSENTIAL".equals(framing)) {
-			insight = 100;
-			insightWhy = "R3: cut to essential fields — a clean, Board-actionable summary";
-		} else if ("SHRINK_TO_FIT".equals(framing)) {
-			insight = 60;
-			insightWhy = "R3: shrank everything to fit — readable but not prioritised";
-		} else if ("SPLIT_TWO_SCREENS".equals(framing)) {
-			insight = 25;
-			insightWhy = "R3: split across two screens — ignored the Board's one-screen constraint";
-		} else {
-			insight = 50;
-			insightWhy = "No R3 framing decision on record; neutral default pending facilitator review";
-		}
-		repository.upsertConstructScore(runId, 0, INSIGHT_COMMUNICATION, insight, "SCORED", insightWhy);
+		// --- Insight Communication: scored LIVE by the facilitator during the Final
+		// Board Presentation (v3), against three criteria — clear ask answered,
+		// numbers cited, actionable recommendation. Seed a neutral placeholder here;
+		// the facilitator's presentation score overrides it.
+		repository.upsertConstructScore(runId, 0, INSIGHT_COMMUNICATION, 50, "PENDING_PRESENTATION",
+				"Awaiting the Final Board Presentation — scored live by the facilitator");
 	}
 
 	private void finalizeMean(UUID runId, String construct) {
