@@ -59,6 +59,22 @@ public interface Sim2EngagementRepository
 	@Query(value = "SELECT simulation_id FROM simulation_runs WHERE run_id = :runId", nativeQuery = true)
 	UUID findSimulationId(@Param("runId") UUID runId);
 
+	/**
+	 * The latest broadcast for this run's simulation that was sent AFTER the run started, so a stale
+	 * broadcast from an earlier session never fires for a team that started later.
+	 */
+	@Query(value = """
+			SELECT b.broadcast_id AS "broadcastId", b.kind AS "kind", b.message AS "message",
+			       b.created_at AS "createdAt"
+			FROM sim2_broadcast b
+			JOIN simulation_runs sr ON sr.simulation_id = b.simulation_id
+			WHERE sr.run_id = :runId
+			  AND b.created_at > sr.started_at
+			ORDER BY b.created_at DESC
+			LIMIT 1
+			""", nativeQuery = true)
+	Map<String, Object> findLatestBroadcastForRun(@Param("runId") UUID runId);
+
 	/** The team's Round 2 typed answer (training vs market), used to personalise Breaking News. */
 	@Query(value = "SELECT typed_answer FROM sim2_submissions WHERE run_id = :runId AND round_number = 2",
 			nativeQuery = true)

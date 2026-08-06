@@ -133,7 +133,9 @@ public class Sim2ScoringService {
 		// Board Presentation (v3), against three criteria — clear ask answered,
 		// numbers cited, actionable recommendation. Seed a neutral placeholder here;
 		// the facilitator's presentation score overrides it.
-		repository.upsertConstructScore(runId, 0, INSIGHT_COMMUNICATION, 50, "PENDING_PRESENTATION",
+		// Neutral 50 placeholder (status must be SCORED per the value/status check);
+		// the facilitator's live Final Board Presentation score overrides it.
+		repository.upsertConstructScore(runId, 0, INSIGHT_COMMUNICATION, 50, "SCORED",
 				"Awaiting the Final Board Presentation — scored live by the facilitator");
 	}
 
