@@ -59,6 +59,9 @@ public class Sim2GradingService {
 			case "NUMERIC" -> gradeNumeric(submitted, canonical, tolAbs, tolPct);
 			// v2 Round 1 asks for two figures in one answer (revenue AND count); both must match.
 			case "NUMERIC_MULTI" -> gradeNumericMulti(submitted, canonical);
+			// v3: a semicolon-separated mix of text and numeric parts, all required
+			// (e.g. "training;25.5", "Notebook Set;April").
+			case "MULTI" -> gradeMulti(submitted, canonical);
 			case "CHOICE" -> new GradeResult(submitted.equalsIgnoreCase(canonical), answerType, submitted,
 					"exact choice match");
 			default -> gradeText(submitted, canonical);
@@ -94,6 +97,49 @@ public class Sim2GradingService {
 		boolean ok = missing.isEmpty();
 		return new GradeResult(ok, "NUMERIC_MULTI", submitted,
 				ok ? "all figures matched" : "missing figure(s): " + String.join(", ", missing));
+	}
+
+	/**
+	 * A mix of required parts, semicolon-separated. Each part is graded as an exact number if it looks
+	 * numeric, otherwise as a contained text phrase. Every part must be present. Used for the v3
+	 * two-part answers, e.g. "training;25.5" (a word + a figure) or "Notebook Set;April" (two words).
+	 */
+	private GradeResult gradeMulti(String submitted, String canonical) {
+		List<BigDecimal> nums = new ArrayList<>();
+		try {
+			nums.add(new BigDecimal(stripNumericNoise(submitted)));
+		} catch (NumberFormatException ignored) {
+			// fall through to extraction
+		}
+		nums.addAll(extractNumbers(submitted));
+		String norm = normalizeText(submitted);
+
+		List<String> missing = new ArrayList<>();
+		for (String raw : canonical.split(";")) {
+			String part = raw.trim();
+			if (part.isEmpty()) {
+				continue;
+			}
+			BigDecimal exp = tryDecimal(part);
+			if (exp != null) {
+				if (nums.stream().noneMatch(n -> n.compareTo(exp) == 0)) {
+					missing.add(part);
+				}
+			} else if (!norm.contains(normalizeText(part))) {
+				missing.add(part);
+			}
+		}
+		boolean ok = missing.isEmpty();
+		return new GradeResult(ok, "MULTI", submitted,
+				ok ? "all parts matched" : "missing: " + String.join(", ", missing));
+	}
+
+	private BigDecimal tryDecimal(String s) {
+		try {
+			return new BigDecimal(stripNumericNoise(s));
+		} catch (NumberFormatException e) {
+			return null;
+		}
 	}
 
 	/**
