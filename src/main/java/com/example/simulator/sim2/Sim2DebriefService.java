@@ -277,6 +277,7 @@ public class Sim2DebriefService {
 
 		Map<String, Object> out = new LinkedHashMap<>();
 		out.put("dataTrustFirstDropRound", dropRounds.isEmpty() ? null : dropRounds.get(0));
+		out.put("dataTrustDropRounds", dropRounds); // full list, for the trajectory chart
 		out.put("dataTrustDropCount", dropRounds.size());
 		// "Compounded" if it dropped more than once; "held" if it dropped once and never again.
 		out.put("dataTrustPattern",
