@@ -55,4 +55,12 @@ public interface Sim2EngagementRepository
 			WHERE run_id = :runId AND round_number = :roundNumber
 			""", nativeQuery = true)
 	Map<String, Object> findBoardCall(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
+
+	@Query(value = "SELECT simulation_id FROM simulation_runs WHERE run_id = :runId", nativeQuery = true)
+	UUID findSimulationId(@Param("runId") UUID runId);
+
+	/** The team's Round 2 typed answer (training vs market), used to personalise Breaking News. */
+	@Query(value = "SELECT typed_answer FROM sim2_submissions WHERE run_id = :runId AND round_number = 2",
+			nativeQuery = true)
+	String findRound2Answer(@Param("runId") UUID runId);
 }
