@@ -1,5 +1,6 @@
 package com.example.simulator.sim2;
 
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -99,44 +100,96 @@ public class Sim2ScoringService {
 		finalizeMean(runId, JUDGMENT_CALIBRATION);
 		finalizeMean(runId, TURNAROUND_DISCIPLINE);
 
-		// --- Data Trust Score: did the numbers survive without silent breakage? ---
-		int trust = 100;
-		StringBuilder trustWhy = new StringBuilder();
-		Boolean r5 = repository.findRoundCorrect(runId, 5); // fidelity check vs the R3 figure
-		if (Boolean.FALSE.equals(r5)) {
-			trust -= 35;
-			trustWhy.append("R5 fidelity check failed (numbers did not reproduce); ");
-		} else if (r5 == null) {
-			trust -= 15;
-			trustWhy.append("R5 fidelity check not attempted; ");
-		}
-		if (Boolean.FALSE.equals(repository.findRoundCorrect(runId, 3))) {
-			trust -= 15;
-			trustWhy.append("R3 source figure was wrong; ");
-		}
-		// v2 twist: applying the deduction to ALL sales (incl. in-store) corrupts every
-		// category margin downstream — the clearest data-integrity break in the run.
-		if ("APPLY_TO_ALL_SALES".equals(repository.findRoundAction(runId, 2))) {
-			trust -= 20;
-			trustWhy.append("R2 deduction applied to all sales incl. in-store (margins corrupted); ");
-		}
-		if (Boolean.FALSE.equals(repository.findRoundCorrect(runId, 2))) {
-			trust -= 10;
-			trustWhy.append("R2 margin figure was wrong; ");
-		}
+		// --- Data Trust Score (v4 cumulative weighting): 45% Round 1 outcome,
+		// 15% Round 1 data-issue tag match, 40% Round 3 outcome. The Spot-Audit
+		// penalty (-20, one team only) is applied by the facilitator as an override,
+		// and a Round 4/5 fidelity mismatch is logged as a debrief flag, not weighted.
+		boolean r1 = Boolean.TRUE.equals(repository.findRoundCorrect(runId, 1));
+		boolean r3 = Boolean.TRUE.equals(repository.findRoundCorrect(runId, 3));
+		int tagPts = round1TagPoints(runId); // 0..15
+		int trust = (r1 ? 45 : 0) + tagPts + (r3 ? 40 : 0);
 		trust = Math.max(0, Math.min(100, trust));
-		repository.upsertConstructScore(runId, 0, DATA_TRUST, trust, "SCORED",
-				trustWhy.length() == 0 ? "Numbers survived across rounds with no breakage signals"
-						: trustWhy.toString().trim());
+		String trustWhy = "R1 outcome " + (r1 ? "45" : "0") + "/45, R1 tag match " + tagPts
+				+ "/15, R3 outcome " + (r3 ? "40" : "0") + "/40";
+		repository.upsertConstructScore(runId, 0, DATA_TRUST, trust, "SCORED", trustWhy);
 
-		// --- Insight Communication: scored LIVE by the facilitator during the Final
-		// Board Presentation (v3), against three criteria — clear ask answered,
-		// numbers cited, actionable recommendation. Seed a neutral placeholder here;
-		// the facilitator's presentation score overrides it.
-		// Neutral 50 placeholder (status must be SCORED per the value/status check);
-		// the facilitator's live Final Board Presentation score overrides it.
-		repository.upsertConstructScore(runId, 0, INSIGHT_COMMUNICATION, 50, "SCORED",
-				"Awaiting the Final Board Presentation — scored live by the facilitator");
+		// --- Board Clarity: provisional score from the captured free-text fields
+		// (Rounds 1, 2, 3, and the R5 Board Brief), 50 pts for a field of adequate
+		// length + 50 pts for citing a specific number. The Final Board Presentation
+		// score entered live by the facilitator overrides this value.
+		repository.upsertConstructScore(runId, 0, INSIGHT_COMMUNICATION, boardClarity(runId), "SCORED",
+				"Provisional Board Clarity from free-text fields — refined live by the Final Board Presentation");
+	}
+
+	/**
+	 * Round 1 data-issue tag match, worth up to 15 Data-Trust points. Full credit (15) only when all
+	 * three required tags — Improper Formatting, Incomplete, Duplicated — are present with no false
+	 * positive (Incorrect selected); partial credit (7) for exactly two of three, no false positive.
+	 */
+	private int round1TagPoints(UUID runId) {
+		String tags = segment(runId, 1, "issues:").toLowerCase();
+		if (tags.isBlank()) {
+			return 0;
+		}
+		boolean falsePositive = tags.contains("incorrect");
+		int matched = 0;
+		if (tags.contains("improper formatting")) matched++;
+		if (tags.contains("incomplete")) matched++;
+		if (tags.contains("duplicated")) matched++;
+		if (matched == 3 && !falsePositive) return 15;
+		if (matched == 2 && !falsePositive) return 7;
+		return 0;
+	}
+
+	/** Mean provisional Board Clarity across the free-text rounds (1, 2, 3 note; 5 Board Brief). */
+	private int boardClarity(UUID runId) {
+		int[] scores = {
+				clarityForRound(runId, 1, "note:", 10),
+				clarityForRound(runId, 2, "note:", 10),
+				clarityForRound(runId, 3, "note:", 10),
+				clarityForRound(runId, 5, "brief:", 40),
+		};
+		int sum = 0;
+		int n = 0;
+		for (int s : scores) {
+			if (s >= 0) {
+				sum += s;
+				n++;
+			}
+		}
+		return n == 0 ? 0 : Math.round((float) sum / n);
+	}
+
+	/** 50 pts if the round's free-text field meets its length bar, +50 if it cites a number; -1 if absent. */
+	private int clarityForRound(UUID runId, int roundNumber, String label, int minLen) {
+		Map<String, Object> sub = repository.findSubmission(runId, roundNumber);
+		if (sub == null) {
+			return -1; // round not submitted — excluded from the mean, not scored zero
+		}
+		String text = segment(runId, roundNumber, label);
+		int pts = 0;
+		if (text.length() >= minLen) pts += 50;
+		if (text.matches(".*\\d.*")) pts += 50;
+		return pts;
+	}
+
+	/** Extracts a labelled segment from a stored typed answer, e.g. the text after "issues:" up to the next "|". */
+	private String segment(UUID runId, int roundNumber, String label) {
+		Map<String, Object> sub = repository.findSubmission(runId, roundNumber);
+		if (sub == null || sub.get("typedAnswer") == null) {
+			return "";
+		}
+		String s = String.valueOf(sub.get("typedAnswer"));
+		int i = s.toLowerCase().indexOf(label.toLowerCase());
+		if (i < 0) {
+			return "";
+		}
+		String rest = s.substring(i + label.length());
+		int bar = rest.indexOf('|');
+		if (bar >= 0) {
+			rest = rest.substring(0, bar);
+		}
+		return rest.trim();
 	}
 
 	private void finalizeMean(UUID runId, String construct) {
@@ -156,18 +209,19 @@ public class Sim2ScoringService {
 	 * under-confidence; low-and-wrong is well-calibrated and scores mid.
 	 */
 	int calibration(boolean correct, String confidence) {
+		// v4 confidence x correctness matrix (consolidated construct definitions).
 		String c = confidence == null ? "MEDIUM" : confidence.toUpperCase();
 		if (correct) {
 			return switch (c) {
 				case "HIGH" -> 100;
-				case "MEDIUM" -> 80;
+				case "MEDIUM" -> 75;
 				default -> 60; // right, but did not back itself
 			};
 		}
 		return switch (c) {
 			case "HIGH" -> 0; // confidently wrong
-			case "MEDIUM" -> 35;
-			default -> 55; // wrong, but flagged the doubt
+			case "MEDIUM" -> 25;
+			default -> 40; // wrong, but flagged the doubt
 		};
 	}
 
