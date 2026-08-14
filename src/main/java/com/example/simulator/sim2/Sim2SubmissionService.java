@@ -24,6 +24,18 @@ import org.springframework.web.multipart.MultipartFile;
 @Transactional
 public class Sim2SubmissionService {
 
+	/**
+	 * v4: each round is owned and submitted by one specific role, not always the Team Lead.
+	 * The Team Lead is always allowed as a fallback so a solo / bot-filled test team can still
+	 * submit every round. Role codes are stable across sim versions; only display names changed.
+	 */
+	private static final Map<Integer, String> ROUND_OWNER = Map.of(
+			1, "DATA_QUALITY_ANALYST",
+			2, "CATEGORY_REGIONAL_ANALYST",
+			3, "REPORTING_DASHBOARD_ANALYST",
+			4, "PEOPLE_ANALYTICS_ASSOCIATE",
+			5, "TEAM_LEAD");
+
 	private final Sim2Repository repository;
 	private final Sim2GradingService grading;
 	private final Sim2ScoringService scoring;
@@ -49,9 +61,15 @@ public class Sim2SubmissionService {
 			throw new IllegalStateException("Participant is not part of this run");
 		}
 
+		// The round's owning role submits it (v4). The Team Lead is always accepted as a
+		// fallback so a solo or bot-filled team is never locked out of a non-lead round.
 		String leadRole = repository.findLeadRole(runId);
-		if (leadRole != null && !leadRole.equals(role)) {
-			throw new IllegalStateException("Only the " + leadRole + " may submit a round");
+		String ownerRole = ROUND_OWNER.getOrDefault(roundNumber, leadRole);
+		boolean isOwner = ownerRole != null && ownerRole.equals(role);
+		boolean isLead = leadRole != null && leadRole.equals(role);
+		if (!isOwner && !isLead) {
+			throw new IllegalStateException("Only the round owner (" + ownerRole + ") or the "
+					+ leadRole + " may submit this round");
 		}
 
 		String status = repository.findRoundStatus(runId, roundNumber);
