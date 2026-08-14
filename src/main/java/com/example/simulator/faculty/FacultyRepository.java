@@ -177,7 +177,9 @@ public interface FacultyRepository extends org.springframework.data.repository.R
 			      AND NOT EXISTS (SELECT 1 FROM sim2_round_state rs2 WHERE rs2.run_id = sr.run_id)
 			  )
 			) t
-			ORDER BY (t."roundStatus" = 'ACTIVE') DESC, t."teamName"
+			-- Most recently started team first, so a facilitator sees the team that
+			-- just joined at the top; active rounds break ties above finished ones.
+			ORDER BY t."startedAt" DESC NULLS LAST, (t."roundStatus" = 'ACTIVE') DESC
 			LIMIT 100
 			""", nativeQuery = true)
 	List<Map<String, Object>> findSessionOverview();
