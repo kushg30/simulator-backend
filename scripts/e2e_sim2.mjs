@@ -7,11 +7,11 @@ const OWNER = {
   3: "REPORTING_DASHBOARD_ANALYST", 4: "PEOPLE_ANALYTICS_ASSOCIATE", 5: "TEAM_LEAD",
 };
 const ANSWERS = {
-  1: "62667; 59 | issues: Improper Formatting, Incomplete, Duplicated | note: parsed raw strings, 5 dup pairs, 62667 is trustworthy",
-  2: "Training/Execution Gap; 25.5 | note: West 3.5 training hrs vs 15.75 elsewhere, a 25.5pp gap",
-  3: "270 | note: macro appends the new month below round 1, 270 rows, duplicates retained",
-  4: "Notebook Set; 35; April; 90",
-  5: "Notebook Set; 35; April; 90 | brief: Bluetooth revenue is 62,667 after removing duplicates; West missed on training not market with a 25.5pp gap; the macro combined 270 clean rows; top product Notebook Set at 35, peaking in April at 90.",
+  1: "62667 | issues: Improper Formatting, Incomplete, Duplicated | note: 5 dup pairs, 62667 is trustworthy",
+  2: "People (Training & Skill Gap); 25.5 | note: West 3.5 training hrs vs 15.75 elsewhere, a 25.5pp gap",
+  3: "270; 1381546 | macro: Yes | note: recorded a macro to combine both months, 270 rows",
+  4: "Notebook Set; 35; April; 90 | chart: Bar chart",
+  5: "| situation: The Board wants a QBR it can trust | complication: revenue is 62,667 once duplicates are removed; the West shortfall is a People/training gap of 25.5; the combined file is 270 rows and 1,381,546 revenue; Notebook Set peaks in April | question: where should the Board invest next | answer: fix the data pipeline and close the training gap",
 };
 
 let pass = 0, fail = 0;
@@ -89,7 +89,12 @@ async function main() {
 
     const res = await j("GET", `/api/sim2/runs/${runId}/rounds/${n}/results`);
     const correct = res.data?.submission?.isCorrect;
-    log(correct === true, `R${n} graded correct`, `isCorrect=${correct}, next=${res.data?.nextRound}`);
+    if (n === 5) {
+      // v5: Round 5 is a free-text SCQA synthesis — not correct/incorrect.
+      log(correct === null || correct === undefined, "R5 synthesis accepted (not numerically graded)", `isCorrect=${correct}, next=${res.data?.nextRound}`);
+    } else {
+      log(correct === true, `R${n} graded correct`, `isCorrect=${correct}, next=${res.data?.nextRound}`);
+    }
   }
 
   console.log("\n── 7. Final scores (round 0) ──");

@@ -26,7 +26,7 @@ async function main() {
   // R1: LEAD submits (fallback for a non-lead-owned round) a WRONG answer at HIGH confidence.
   await j("POST", `/api/sim2/runs/${runId}/rounds/1/start`);
   const s1 = await j("POST", `/api/sim2/runs/${runId}/rounds/1/submission`,
-    { participantId: lead, typedAnswer: "99999; 12 | issues: Incorrect | note: rushed", confidence: "HIGH" }, true);
+    { participantId: lead, typedAnswer: "99999 | issues: Incorrect | note: rushed", confidence: "HIGH" }, true);
   log(s1.ok, "R1 lead-fallback submit accepted (owner is DQA)", s1.ok ? "" : JSON.stringify(s1.data));
 
   // Double submit must be rejected.
@@ -42,7 +42,7 @@ async function main() {
   // R2: owner submits WRONG root cause at LOW confidence -> Judgment should be 40.
   await j("POST", `/api/sim2/runs/${runId}/rounds/2/start`);
   await j("POST", `/api/sim2/runs/${runId}/rounds/2/submission`,
-    { participantId: P.CATEGORY_REGIONAL_ANALYST, typedAnswer: "Market/Environment Condition; 10 | note: guess", confidence: "LOW" }, true);
+    { participantId: P.CATEGORY_REGIONAL_ANALYST, typedAnswer: "Market (Environment / Demand); 10 | note: guess", confidence: "LOW" }, true);
   const r2 = await j("GET", `/api/sim2/runs/${runId}/rounds/2/results`);
   log(r2.data?.submission?.isCorrect === false, "R2 wrong answer graded incorrect", `isCorrect=${r2.data?.submission?.isCorrect}`);
   log(jc(r2.data, "JUDGMENT_CALIBRATION") === 40, "R2 Judgment = 40 (wrong + LOW)", `judg=${jc(r2.data, "JUDGMENT_CALIBRATION")}`);
@@ -50,7 +50,7 @@ async function main() {
   // R3: owner submits the 264 trap -> incorrect.
   await j("POST", `/api/sim2/runs/${runId}/rounds/3/start`);
   await j("POST", `/api/sim2/runs/${runId}/rounds/3/submission`,
-    { participantId: P.REPORTING_DASHBOARD_ANALYST, typedAnswer: "264 | note: removed dups", confidence: "MEDIUM" }, true);
+    { participantId: P.REPORTING_DASHBOARD_ANALYST, typedAnswer: "264; 1381546 | macro: Yes | note: removed dups", confidence: "MEDIUM" }, true);
   const r3 = await j("GET", `/api/sim2/runs/${runId}/rounds/3/results`);
   log(r3.data?.submission?.isCorrect === false, "R3 '264' trap graded incorrect", `isCorrect=${r3.data?.submission?.isCorrect}`);
 
