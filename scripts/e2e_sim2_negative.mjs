@@ -23,15 +23,20 @@ async function main() {
   const run = await j("POST", `/api/runs/start/${teamId}`); const runId = run.data.runId;
   console.log(`Team ${stamp} run ${runId}\n`);
 
-  // R1: LEAD submits (fallback for a non-lead-owned round) a WRONG answer at HIGH confidence.
+  // v5 strict ownership: the Team Lead is NOT the R1 owner (DQA is) -> rejected.
   await j("POST", `/api/sim2/runs/${runId}/rounds/1/start`);
+  const leadTry = await j("POST", `/api/sim2/runs/${runId}/rounds/1/submission`,
+    { participantId: lead, typedAnswer: "62667", confidence: "HIGH" }, true);
+  log(!leadTry.ok, "R1 rejects the Team Lead (strict owner-only)", leadTry.ok ? "WRONGLY ACCEPTED" : `(${leadTry.data?.error})`);
+
+  // Owner (DQA) submits a WRONG answer at HIGH confidence.
   const s1 = await j("POST", `/api/sim2/runs/${runId}/rounds/1/submission`,
-    { participantId: lead, typedAnswer: "99999 | issues: Incorrect | note: rushed", confidence: "HIGH" }, true);
-  log(s1.ok, "R1 lead-fallback submit accepted (owner is DQA)", s1.ok ? "" : JSON.stringify(s1.data));
+    { participantId: P.DATA_QUALITY_ANALYST, typedAnswer: "99999 | issues: Incorrect | note: rushed", confidence: "HIGH" }, true);
+  log(s1.ok, "R1 owner submits (wrong answer)", s1.ok ? "" : JSON.stringify(s1.data));
 
   // Double submit must be rejected.
   const dup = await j("POST", `/api/sim2/runs/${runId}/rounds/1/submission`,
-    { participantId: P.DATA_QUALITY_ANALYST, typedAnswer: "62667; 59", confidence: "LOW" }, true);
+    { participantId: P.DATA_QUALITY_ANALYST, typedAnswer: "62667", confidence: "LOW" }, true);
   log(!dup.ok, "R1 double-submit rejected", dup.ok ? "WRONGLY ACCEPTED" : `(${dup.data?.error})`);
 
   const r1 = await j("GET", `/api/sim2/runs/${runId}/rounds/1/results`);
