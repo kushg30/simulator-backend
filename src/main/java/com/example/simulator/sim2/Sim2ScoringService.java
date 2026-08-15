@@ -141,13 +141,16 @@ public class Sim2ScoringService {
 		return 0;
 	}
 
-	/** Mean provisional Board Clarity across the free-text rounds (1, 2, 3 note; 5 Board Brief). */
+	/**
+	 * Mean provisional Board Clarity across the free-text rounds: the Round 1/2/3 one-liners
+	 * (length + cites a number) and the v5 Round 5 SCQA Complication (a keyword synthesis check).
+	 */
 	private int boardClarity(UUID runId) {
 		int[] scores = {
 				clarityForRound(runId, 1, "note:", 10),
 				clarityForRound(runId, 2, "note:", 10),
 				clarityForRound(runId, 3, "note:", 10),
-				clarityForRound(runId, 5, "brief:", 40),
+				round5Clarity(runId),
 		};
 		int sum = 0;
 		int n = 0;
@@ -158,6 +161,27 @@ public class Sim2ScoringService {
 			}
 		}
 		return n == 0 ? 0 : Math.round((float) sum / n);
+	}
+
+	/**
+	 * v5 Round 5 synthesis clarity: a deterministic keyword check on the SCQA Complication field.
+	 * Full credit (100) when it references facts from at least three of the four prior rounds,
+	 * partial (50) for two, none below that. Returns -1 when Round 5 was not submitted.
+	 */
+	private int round5Clarity(UUID runId) {
+		Map<String, Object> sub = repository.findSubmission(runId, 5);
+		if (sub == null) {
+			return -1;
+		}
+		String c = segment(runId, 5, "complication:").toLowerCase();
+		int matched = 0;
+		if (c.contains("62667") || c.contains("62,667") || c.contains("duplicate") || c.contains("trust")) matched++;
+		if (c.contains("people") || c.contains("training") || c.contains("25.5")) matched++;
+		if (c.contains("270") || c.contains("1381546") || c.contains("1,381,546") || c.contains("macro")) matched++;
+		if (c.contains("notebook set") || c.contains("april")) matched++;
+		if (matched >= 3) return 100;
+		if (matched == 2) return 50;
+		return 0;
 	}
 
 	/** 50 pts if the round's free-text field meets its length bar, +50 if it cites a number; -1 if absent. */
