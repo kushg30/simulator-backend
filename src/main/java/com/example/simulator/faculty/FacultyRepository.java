@@ -146,9 +146,10 @@ public interface FacultyRepository extends org.springframework.data.repository.R
 			    LEFT JOIN run_round_clock rc ON rc.run_id = rs.run_id
 			                                AND rc.round_number = rs.round_number
 			    WHERE sr.status <> 'TERMINATED'
-			    ORDER BY sr.run_id,
-			             CASE rs.status WHEN 'ACTIVE' THEN 0 WHEN 'PENDING' THEN 1 ELSE 2 END,
-			             rs.round_number DESC
+			    -- Show the furthest round the team has reached (highest round_number),
+			    -- not whichever round happens to still be ACTIVE — a stale earlier round
+			    -- that never got marked COMPLETE must never outrank a later finished one.
+			    ORDER BY sr.run_id, rs.round_number DESC
 			  )
 			  UNION ALL
 			  (
