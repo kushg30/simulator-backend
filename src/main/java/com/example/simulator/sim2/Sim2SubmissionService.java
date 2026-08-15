@@ -116,8 +116,14 @@ public class Sim2SubmissionService {
 			scoring.scoreRoundNoAnswer(runId, roundNumber, active, duration);
 		}
 
-		repository.insertSubmission(runId, roundNumber, participantId, storedPath, originalName,
-				typedAnswer, conf, active, correct, scoreDetail);
+		try {
+			repository.insertSubmission(runId, roundNumber, participantId, storedPath, originalName,
+					typedAnswer, conf, active, correct, scoreDetail);
+		} catch (org.springframework.dao.DataIntegrityViolationException dup) {
+			// Lost a race with a concurrent submit (unique run+round). The other one won;
+			// roll this one back and report it cleanly instead of a 500.
+			throw new IllegalStateException("Round " + roundNumber + " has already been submitted");
+		}
 		repository.completeRound(runId, roundNumber);
 
 		// The last round triggers the run-level final reveal (Data Trust Score and
