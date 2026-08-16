@@ -22,10 +22,15 @@ public class Sim2EngagementController {
 
 	private final Sim2EngagementRepository repository;
 	private final Sim2DebriefService debrief;
+	private final Sim2Repository sim2Repository;
+	private final Sim2ScoringService scoring;
 
-	public Sim2EngagementController(Sim2EngagementRepository repository, Sim2DebriefService debrief) {
+	public Sim2EngagementController(Sim2EngagementRepository repository, Sim2DebriefService debrief,
+			Sim2Repository sim2Repository, Sim2ScoringService scoring) {
 		this.repository = repository;
 		this.debrief = debrief;
+		this.sim2Repository = sim2Repository;
+		this.scoring = scoring;
 	}
 
 	/** Partial Leaderboard reveal (Data Trust + Turnaround only) shown between Rounds 2 and 3. */
@@ -70,6 +75,25 @@ public class Sim2EngagementController {
 		java.util.Map<String, Object> out = new java.util.LinkedHashMap<>(b);
 		out.put("message", market ? BREAKING_MARKET : BREAKING_TRAINING);
 		return out;
+	}
+
+	/**
+	 * v6 Breaking-News confidence revision: the team revises its stated Round 2 confidence before it
+	 * locks. Records the revised value and re-scores Round 2 Judgment Calibration with the modifier.
+	 */
+	@PostMapping("/runs/{runId}/rounds/2/revise-confidence")
+	@Transactional
+	public ResponseEntity<?> reviseConfidence(@PathVariable UUID runId, @RequestBody Map<String, Object> body) {
+		String conf = body.get("confidence") == null ? "" : String.valueOf(body.get("confidence")).trim().toUpperCase();
+		if (!conf.equals("HIGH") && !conf.equals("MEDIUM") && !conf.equals("LOW")) {
+			return ResponseEntity.badRequest().body(Map.of("error", "confidence must be HIGH, MEDIUM or LOW"));
+		}
+		if (sim2Repository.findSubmission(runId, 2) == null) {
+			return ResponseEntity.badRequest().body(Map.of("error", "Round 2 has not been submitted yet"));
+		}
+		sim2Repository.updateRevisedConfidence(runId, 2, conf);
+		scoring.rescoreRound2WithRevision(runId);
+		return ResponseEntity.ok(Map.of("runId", runId, "roundNumber", 2, "revisedConfidence", conf));
 	}
 
 	/** Record the team's one-line Emergency Board Call response (ungraded, one per round). */
