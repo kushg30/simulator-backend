@@ -387,13 +387,21 @@ public interface Sim2Repository extends org.springframework.data.repository.Repo
 
 	@Query(value = """
 			SELECT round_number AS "roundNumber", typed_answer AS "typedAnswer",
-			       confidence AS "confidence", is_correct AS "isCorrect", outcome_pct AS "outcomePct",
+			       confidence AS "confidence", revised_confidence AS "revisedConfidence",
+			       is_correct AS "isCorrect", outcome_pct AS "outcomePct",
 			       original_filename AS "originalFilename", submitted_at AS "submittedAt",
 			       active_seconds_used AS "activeSecondsUsed"
 			FROM sim2_submissions
 			WHERE run_id = :runId AND round_number = :roundNumber
 			""", nativeQuery = true)
 	Map<String, Object> findSubmission(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
+
+	/** Record the team's revised Round 2 confidence (Breaking-News window). */
+	@Modifying
+	@Query(value = "UPDATE sim2_submissions SET revised_confidence = :confidence "
+			+ "WHERE run_id = :runId AND round_number = :roundNumber", nativeQuery = true)
+	int updateRevisedConfidence(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber,
+			@Param("confidence") String confidence);
 
 	// =========================================================================
 	// Construct scores

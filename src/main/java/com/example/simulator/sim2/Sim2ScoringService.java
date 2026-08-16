@@ -81,6 +81,65 @@ public class Sim2ScoringService {
 				"Board Clarity finalised at engagement end + Final Presentation");
 	}
 
+	/**
+	 * Re-score Round 2 Judgment Calibration after a Breaking-News confidence revision. The base matrix
+	 * uses the LOCKED (revised, else original) confidence; the modifier is keyed to Field 1 (root
+	 * cause) correctness — not the blended Outcome — per v6: incorrect + revises down from high/medium
+	 * → +15; incorrect + still high → −10; otherwise no modifier. Floored at 0, capped at 100.
+	 */
+	public void rescoreRound2WithRevision(UUID runId) {
+		Map<String, Object> sub = repository.findSubmission(runId, 2);
+		if (sub == null) {
+			return;
+		}
+		String typed = String.valueOf(sub.get("typedAnswer"));
+		String orig = sub.get("confidence") == null ? "MEDIUM" : String.valueOf(sub.get("confidence"));
+		Object revObj = sub.get("revisedConfidence");
+		String revised = revObj == null ? null : String.valueOf(revObj);
+		String locked = revised != null ? revised : orig;
+
+		Integer outcome = repository.findRoundOutcome(runId, 2);
+		boolean outcomeFull = outcome != null && outcome >= 100;
+		// Field 1 (root cause) is the first graded field, before the first "|".
+		boolean field1Correct = firstField(typed).toLowerCase().contains("people");
+
+		int base = calibration(outcomeFull, locked);
+		int modifier = 0;
+		if (!field1Correct) {
+			int origRank = rank(orig);
+			boolean revisedDown = revised != null && rank(revised) < origRank;
+			if (revisedDown && origRank >= 2) {
+				modifier = 15; // reconsidered a wrong call
+			} else if ("HIGH".equalsIgnoreCase(locked)) {
+				modifier = -10; // confidently wrong, held the line
+			}
+		}
+		int judgment = Math.max(0, Math.min(100, base + modifier));
+		repository.upsertConstructScore(runId, 2, JUDGMENT_CALIBRATION, judgment, "SCORED",
+				"Outcome " + (outcome == null ? "?" : outcome) + "%, locked confidence=" + locked
+						+ (revised != null ? " (revised from " + orig + ")" : "")
+						+ ", Breaking-News modifier " + (modifier >= 0 ? "+" : "") + modifier);
+	}
+
+	private String firstField(String s) {
+		if (s == null) {
+			return "";
+		}
+		int bar = s.indexOf('|');
+		String head = bar >= 0 ? s.substring(0, bar) : s;
+		int semi = head.indexOf(';');
+		return (semi >= 0 ? head.substring(0, semi) : head).trim();
+	}
+
+	private int rank(String confidence) {
+		String c = confidence == null ? "MEDIUM" : confidence.toUpperCase();
+		return switch (c) {
+			case "HIGH" -> 3;
+			case "LOW" -> 1;
+			default -> 2;
+		};
+	}
+
 	/** Fallback for any round with no answer key (kept for safety; not used by v6 rounds 1-5). */
 	public void scoreRoundNoAnswer(UUID runId, int roundNumber, int activeSecondsUsed,
 			int roundDurationMinutes) {
@@ -99,6 +158,10 @@ public class Sim2ScoringService {
 
 	// ═══ engagement finalisation (round 0) ═════════════════════════════════════
 	public void finalizeEngagement(UUID runId) {
+
+		// Apply the Round 2 Breaking-News modifier before averaging Judgment, so a team that
+		// held a high confidence on a wrong root cause (or revised it down) is scored correctly.
+		rescoreRound2WithRevision(runId);
 
 		finalizeMean(runId, ANALYTICAL_RIGOR);
 		finalizeMean(runId, JUDGMENT_CALIBRATION);
