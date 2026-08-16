@@ -51,9 +51,10 @@ public class Sim2EngagementController {
 
 	/**
 	 * Run-scoped broadcast: the same trigger, but the Breaking News message is personalised to the
-	 * team's Round 2 answer — a training/execution team hears the training budget was approved, a
-	 * market/environment team hears a board member push back. Falls back to the training variant when
-	 * the R2 answer is unknown (per the video brief's "ship Variant A to everyone" fallback).
+	 * team's Round 2 root-cause answer (v5: People/Process/Market/Resource). A team on the People /
+	 * training cause hears the training budget was approved; a team that answered Market hears a board
+	 * member push back. Process / Resource / unknown fall back to the training variant (per the video
+	 * brief's "ship Variant A to everyone" fallback).
 	 */
 	@GetMapping("/runs/{runId}/broadcast")
 	public Map<String, Object> runBroadcast(@PathVariable UUID runId) {
