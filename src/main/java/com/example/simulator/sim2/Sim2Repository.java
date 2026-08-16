@@ -373,7 +373,7 @@ public interface Sim2Repository extends org.springframework.data.repository.Repo
 
 	@Query(value = """
 			SELECT round_number AS "roundNumber", typed_answer AS "typedAnswer",
-			       confidence AS "confidence", is_correct AS "isCorrect",
+			       confidence AS "confidence", is_correct AS "isCorrect", outcome_pct AS "outcomePct",
 			       original_filename AS "originalFilename", submitted_at AS "submittedAt",
 			       active_seconds_used AS "activeSecondsUsed"
 			FROM sim2_submissions
