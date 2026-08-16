@@ -100,25 +100,33 @@ public class Sim2SubmissionService {
 		int active = activeSeconds == null ? 0 : activeSeconds;
 		int duration = durationMin == null ? 0 : durationMin;
 
-		// --- grade (or not, for a free-text round) --------------------------
+		// --- grade + score (v6 per-field partial-credit Outcome) ------------
 		Boolean correct;
+		Integer outcomePct;
 		String scoreDetail;
-		if (grading.isGradable(runId, roundNumber)) {
+		if (roundNumber == 5) {
+			// Round 5 is the SCQA synthesis: no numeric Outcome. Scored on the
+			// Complication keyword check + SCQA completeness (Rigor, Judgment, Board Clarity).
+			correct = null;
+			outcomePct = null;
+			scoreDetail = "{\"reason\":\"SCQA synthesis\",\"answerType\":\"FREE_TEXT\"}";
+			scoring.scoreRound5(runId, active, duration, typedAnswer, conf);
+		} else if (grading.isGradable(runId, roundNumber)) {
 			Sim2GradingService.GradeResult result = grading.grade(runId, roundNumber, typedAnswer);
 			correct = result.correct();
-			scoreDetail = "{\"reason\":\"" + escapeJson(result.reason()) + "\",\"answerType\":\""
-					+ escapeJson(result.answerType()) + "\"}";
-			scoring.scoreRound(runId, roundNumber, correct, conf, active, duration);
+			outcomePct = result.outcomePct();
+			scoreDetail = "{\"reason\":\"" + escapeJson(result.reason()) + "\",\"outcomePct\":" + outcomePct + "}";
+			scoring.scoreRound(runId, roundNumber, outcomePct, conf, active, duration, typedAnswer);
 		} else {
-			// Free-text consolidation round: no correctness, Turnaround Discipline only.
 			correct = null;
+			outcomePct = null;
 			scoreDetail = "{\"reason\":\"free-text, not graded\",\"answerType\":\"FREE_TEXT\"}";
 			scoring.scoreRoundNoAnswer(runId, roundNumber, active, duration);
 		}
 
 		try {
 			repository.insertSubmission(runId, roundNumber, participantId, storedPath, originalName,
-					typedAnswer, conf, active, correct, scoreDetail);
+					typedAnswer, conf, active, correct, outcomePct, scoreDetail);
 		} catch (org.springframework.dao.DataIntegrityViolationException dup) {
 			// Lost a race with a concurrent submit (unique run+round). The other one won;
 			// roll this one back and report it cleanly instead of a 500.

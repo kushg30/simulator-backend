@@ -27,8 +27,12 @@ public class Sim2GradingService {
 		this.repository = repository;
 	}
 
-	/** Outcome of an answer check. {@code correct} is the only thing scoring depends on. */
-	public record GradeResult(boolean correct, String answerType, String normalizedAnswer, String reason) {
+	/**
+	 * Outcome of an answer check. v6: no round is all-or-nothing — {@code outcomePct} is the 0-100
+	 * per-field weighted Outcome; {@code correct} is a convenience for {@code outcomePct == 100}.
+	 */
+	public record GradeResult(boolean correct, int outcomePct, String answerType, String normalizedAnswer,
+			String reason) {
 	}
 
 	/** True when the round has a canonical answer to check against (i.e. not a free-text round). */
@@ -45,27 +49,116 @@ public class Sim2GradingService {
 			throw new IllegalStateException("No answer key configured for round " + roundNumber);
 		}
 
-		String canonical = String.valueOf(key.get("canonicalAnswer"));
 		String answerType = String.valueOf(key.get("answerType"));
-		BigDecimal tolAbs = toDecimal(key.get("toleranceAbs"));
-		BigDecimal tolPct = toDecimal(key.get("tolerancePct"));
-
 		String submitted = typedAnswer == null ? "" : typedAnswer.trim();
 		if (submitted.isEmpty()) {
-			return new GradeResult(false, answerType, submitted, "empty answer");
+			return new GradeResult(false, 0, answerType, submitted, "empty answer");
 		}
 
-		return switch (answerType) {
-			case "NUMERIC" -> gradeNumeric(submitted, canonical, tolAbs, tolPct);
-			// v2 Round 1 asks for two figures in one answer (revenue AND count); both must match.
-			case "NUMERIC_MULTI" -> gradeNumericMulti(submitted, canonical);
-			// v3: a semicolon-separated mix of text and numeric parts, all required
-			// (e.g. "training;25.5", "Notebook Set;April").
-			case "MULTI" -> gradeMulti(submitted, canonical);
-			case "CHOICE" -> new GradeResult(submitted.equalsIgnoreCase(canonical), answerType, submitted,
-					"exact choice match");
-			default -> gradeText(submitted, canonical);
+		// v6 per-field partial-credit Outcome (0-100%). Each field contributes its own share.
+		int outcome = switch (roundNumber) {
+			case 1 -> outcomeRound1(submitted);
+			case 2 -> outcomeRound2(submitted);
+			case 3 -> outcomeRound3(submitted);
+			case 4 -> outcomeRound4(submitted);
+			default -> gradeMulti(submitted, String.valueOf(key.get("canonicalAnswer"))).correct() ? 100 : 0;
 		};
+		return new GradeResult(outcome >= 100, outcome, answerType, submitted, "Outcome " + outcome + "%");
+	}
+
+	// ── v6 per-round Outcome (0-100%) ─────────────────────────────────────────
+	// The typed answer arrives as "gradedFields | label: ... | label: ...". The
+	// graded numeric/text fields are the part before the first "|"; the tags and
+	// tool/chart selects are labelled segments after it.
+
+	/** Text before the first "|", split into the round's graded fields. */
+	private String[] fields(String submitted) {
+		int bar = submitted.indexOf('|');
+		String head = bar >= 0 ? submitted.substring(0, bar) : submitted;
+		return head.split(";");
+	}
+
+	private String field(String submitted, int i) {
+		String[] f = fields(submitted);
+		return i < f.length ? f[i].trim() : "";
+	}
+
+	/** Labelled segment, e.g. seg(s,"issues:") from "... | issues: A, B | note: ...". */
+	private String seg(String s, String label) {
+		int i = s.toLowerCase().indexOf(label.toLowerCase());
+		if (i < 0) {
+			return "";
+		}
+		String rest = s.substring(i + label.length());
+		int bar = rest.indexOf('|');
+		return (bar >= 0 ? rest.substring(0, bar) : rest).trim();
+	}
+
+	private boolean within(String value, double target, double absTol, boolean pct) {
+		BigDecimal n = firstNumber(value);
+		if (n == null) {
+			return false;
+		}
+		double allowed = pct ? Math.abs(target) * absTol : absTol;
+		return Math.abs(n.doubleValue() - target) <= allowed + 1e-9;
+	}
+
+	private BigDecimal firstNumber(String s) {
+		try {
+			return new BigDecimal(stripNumericNoise(s));
+		} catch (NumberFormatException e) {
+			List<BigDecimal> n = extractNumbers(s);
+			return n.isEmpty() ? null : n.get(0);
+		}
+	}
+
+	/** R1 data-issue tag credit: 1.0 full (all three, no false positive), 0.5 for exactly two, else 0. */
+	double round1TagFraction(String submitted) {
+		String tags = seg(submitted, "issues:").toLowerCase();
+		if (tags.isBlank()) {
+			return 0;
+		}
+		boolean falsePositive = tags.contains("incorrect");
+		int matched = 0;
+		if (tags.contains("improper formatting")) matched++;
+		if (tags.contains("incomplete")) matched++;
+		if (tags.contains("duplicated")) matched++;
+		if (matched == 3 && !falsePositive) return 1.0;
+		if (matched == 2 && !falsePositive) return 0.5;
+		return 0;
+	}
+
+	/** R1: 70% Bluetooth revenue within 1% (full or zero) + 30% the data-issue tag match. */
+	private int outcomeRound1(String s) {
+		int rev = within(field(s, 0), 62667, 0.01, true) ? 70 : 0;
+		int tags = (int) Math.round(round1TagFraction(s) * 30);
+		return rev + tags;
+	}
+
+	/** R2: 50% root cause = People + 50% attainment gap within ±1 of 25.5. */
+	private int outcomeRound2(String s) {
+		int cause = normalizeText(field(s, 0)).contains("people") ? 50 : 0;
+		int gap = within(field(s, 1), 25.5, 1.0, false) ? 50 : 0;
+		return cause + gap;
+	}
+
+	/** R3: 50% combined row count exactly 270 + 50% combined revenue within 1% of 1,381,546. */
+	private int outcomeRound3(String s) {
+		BigDecimal rows = firstNumber(field(s, 0));
+		int rowPts = rows != null && rows.compareTo(new BigDecimal(270)) == 0 ? 50 : 0;
+		int revPts = within(field(s, 1), 1381546, 0.01, true) ? 50 : 0;
+		return rowPts + revPts;
+	}
+
+	/** R4: 25% each — most-ordered product, its count, peak month, its count. */
+	private int outcomeRound4(String s) {
+		int p = normalizeText(field(s, 0)).contains("notebook set") ? 25 : 0;
+		BigDecimal pc = firstNumber(field(s, 1));
+		int pcp = pc != null && pc.compareTo(new BigDecimal(35)) == 0 ? 25 : 0;
+		int m = normalizeText(field(s, 2)).contains("april") ? 25 : 0;
+		BigDecimal mc = firstNumber(field(s, 3));
+		int mcp = mc != null && mc.compareTo(new BigDecimal(90)) == 0 ? 25 : 0;
+		return p + pcp + m + mcp;
 	}
 
 	/**
@@ -95,7 +188,7 @@ public class Sim2GradingService {
 			}
 		}
 		boolean ok = missing.isEmpty();
-		return new GradeResult(ok, "NUMERIC_MULTI", submitted,
+		return new GradeResult(ok, ok ? 100 : 0, "NUMERIC_MULTI", submitted,
 				ok ? "all figures matched" : "missing figure(s): " + String.join(", ", missing));
 	}
 
@@ -130,7 +223,7 @@ public class Sim2GradingService {
 			}
 		}
 		boolean ok = missing.isEmpty();
-		return new GradeResult(ok, "MULTI", submitted,
+		return new GradeResult(ok, ok ? 100 : 0, "MULTI", submitted,
 				ok ? "all parts matched" : "missing: " + String.join(", ", missing));
 	}
 
@@ -151,7 +244,7 @@ public class Sim2GradingService {
 		String s = normalizeText(submitted);
 		String c = normalizeText(canonical);
 		boolean ok = !c.isEmpty() && (s.equals(c) || s.contains(c));
-		return new GradeResult(ok, "TEXT", submitted, ok ? "text match" : "no match");
+		return new GradeResult(ok, ok ? 100 : 0, "TEXT", submitted, ok ? "text match" : "no match");
 	}
 
 	private GradeResult gradeNumeric(String submitted, String canonical, BigDecimal tolAbs, BigDecimal tolPct) {
@@ -160,7 +253,7 @@ public class Sim2GradingService {
 		try {
 			expected = new BigDecimal(stripNumericNoise(canonical));
 		} catch (NumberFormatException e) {
-			return new GradeResult(false, "NUMERIC", canonical, "answer key value is not numeric");
+			return new GradeResult(false, 0, "NUMERIC", canonical, "answer key value is not numeric");
 		}
 
 		// Some rounds ask for a sentence containing the figure, e.g. Round 5 wants
@@ -174,7 +267,7 @@ public class Sim2GradingService {
 			candidates.addAll(extractNumbers(submitted));
 		}
 		if (candidates.isEmpty()) {
-			return new GradeResult(false, "NUMERIC", submitted, "no number found in the answer");
+			return new GradeResult(false, 0, "NUMERIC", submitted, "no number found in the answer");
 		}
 
 		BigDecimal actual = candidates.get(0);
@@ -190,7 +283,7 @@ public class Sim2GradingService {
 		// No tolerance configured => exact match (Round 1 reconciliation total).
 		if (tolAbs == null && tolPct == null) {
 			boolean ok = diff.compareTo(BigDecimal.ZERO) == 0;
-			return new GradeResult(ok, "NUMERIC", actual.toPlainString(),
+			return new GradeResult(ok, ok ? 100 : 0, "NUMERIC", actual.toPlainString(),
 					ok ? "exact match" : "expected exact match, off by " + diff.toPlainString());
 		}
 
@@ -203,7 +296,7 @@ public class Sim2GradingService {
 		}
 
 		boolean ok = diff.compareTo(allowed) <= 0;
-		return new GradeResult(ok, "NUMERIC", actual.toPlainString(),
+		return new GradeResult(ok, ok ? 100 : 0, "NUMERIC", actual.toPlainString(),
 				"off by " + diff.toPlainString() + ", allowed " + allowed.toPlainString());
 	}
 
