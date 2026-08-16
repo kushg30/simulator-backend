@@ -46,9 +46,9 @@ public class Sim2ScoringService {
 		repository.upsertConstructScore(runId, roundNumber, JUDGMENT_CALIBRATION, judgment, "SCORED",
 				"Outcome " + outcomePct + "%, confidence=" + confidence);
 
-		int discipline = discipline(activeSecondsUsed, roundDurationMinutes);
+		int discipline = discipline(runId, roundNumber, activeSecondsUsed);
 		repository.upsertConstructScore(runId, roundNumber, TURNAROUND_DISCIPLINE, discipline, "SCORED",
-				"used " + activeSecondsUsed + "s of " + (roundDurationMinutes * 60) + "s active time");
+				"percentile vs the room; used " + activeSecondsUsed + "s of a " + (roundDurationMinutes * 60) + "s window");
 
 		repository.upsertConstructScore(runId, roundNumber, DATA_TRUST, null, "NOT_YET_SCORED",
 				"Cumulative; finalised from Rounds 1 and 3 at engagement end");
@@ -71,9 +71,9 @@ public class Sim2ScoringService {
 		repository.upsertConstructScore(runId, 5, JUDGMENT_CALIBRATION, judgment, "SCORED",
 				"Complication " + comp + " (stands in for Outcome), confidence=" + confidence);
 
-		int discipline = discipline(activeSecondsUsed, roundDurationMinutes);
+		int discipline = discipline(runId, 5, activeSecondsUsed);
 		repository.upsertConstructScore(runId, 5, TURNAROUND_DISCIPLINE, discipline, "SCORED",
-				"used " + activeSecondsUsed + "s of " + (roundDurationMinutes * 60) + "s active time");
+				"percentile vs the room; used " + activeSecondsUsed + "s of a " + (roundDurationMinutes * 60) + "s window");
 
 		repository.upsertConstructScore(runId, 5, DATA_TRUST, null, "NOT_APPLICABLE",
 				"Round 5 draws on earlier Data Trust findings; contributes no new value");
@@ -84,9 +84,9 @@ public class Sim2ScoringService {
 	/** Fallback for any round with no answer key (kept for safety; not used by v6 rounds 1-5). */
 	public void scoreRoundNoAnswer(UUID runId, int roundNumber, int activeSecondsUsed,
 			int roundDurationMinutes) {
-		int discipline = discipline(activeSecondsUsed, roundDurationMinutes);
+		int discipline = discipline(runId, roundNumber, activeSecondsUsed);
 		repository.upsertConstructScore(runId, roundNumber, TURNAROUND_DISCIPLINE, discipline, "SCORED",
-				"used " + activeSecondsUsed + "s of " + (roundDurationMinutes * 60) + "s active time");
+				"percentile vs the room; used " + activeSecondsUsed + "s of a " + (roundDurationMinutes * 60) + "s window");
 		repository.upsertConstructScore(runId, roundNumber, ANALYTICAL_RIGOR, null, "NOT_APPLICABLE",
 				"No answer to check");
 		repository.upsertConstructScore(runId, roundNumber, JUDGMENT_CALIBRATION, null, "NOT_APPLICABLE",
@@ -295,16 +295,21 @@ public class Sim2ScoringService {
 		};
 	}
 
-	/** 100 while inside the round window, tapering to 0 once the window is doubled (percentile is a cohort refinement). */
-	int discipline(int activeSecondsUsed, int roundDurationMinutes) {
-		int windowSeconds = Math.max(1, roundDurationMinutes * 60);
-		double ratio = (double) activeSecondsUsed / windowSeconds;
-		if (ratio <= 1.0) {
-			return 100;
+	/**
+	 * v6 Turnaround Discipline is percentile-based versus the room: fastest quartile 100, middle two
+	 * quartiles 60, slowest quartile 25. Ranked against every other team that has already submitted
+	 * this round in the same simulation (this team's own row is not written yet when scoring runs).
+	 * The first team to submit a round is, by definition, the fastest so far → 100.
+	 */
+	int discipline(UUID runId, int roundNumber, int activeSecondsUsed) {
+		UUID simulationId = repository.findSimulationId(runId);
+		Double faster = simulationId == null ? null
+				: repository.findTurnaroundRankFraction(simulationId, roundNumber, activeSecondsUsed);
+		if (faster == null) {
+			return 100; // first to submit this round
 		}
-		if (ratio >= 2.0) {
-			return 0;
-		}
-		return (int) Math.round((2.0 - ratio) * 100);
+		if (faster < 0.25) return 100;
+		if (faster < 0.75) return 60;
+		return 25;
 	}
 }

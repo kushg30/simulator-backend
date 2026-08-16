@@ -371,6 +371,20 @@ public interface Sim2Repository extends org.springframework.data.repository.Repo
 			nativeQuery = true)
 	Integer findRoundOutcome(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
 
+	/**
+	 * Fraction of the room strictly faster than {@code mine} on this round (Turnaround percentile).
+	 * Compared against every OTHER team that has already submitted this round in the same simulation;
+	 * null when no other team has submitted it yet (this team is first, i.e. fastest).
+	 */
+	@Query(value = """
+			SELECT count(*) FILTER (WHERE s.active_seconds_used < :mine)::float / NULLIF(count(*), 0)
+			FROM sim2_submissions s
+			JOIN simulation_runs r ON r.run_id = s.run_id
+			WHERE r.simulation_id = :simulationId AND s.round_number = :roundNumber
+			""", nativeQuery = true)
+	Double findTurnaroundRankFraction(@Param("simulationId") UUID simulationId,
+			@Param("roundNumber") int roundNumber, @Param("mine") int mine);
+
 	@Query(value = """
 			SELECT round_number AS "roundNumber", typed_answer AS "typedAnswer",
 			       confidence AS "confidence", is_correct AS "isCorrect", outcome_pct AS "outcomePct",
