@@ -355,15 +355,21 @@ public interface Sim2Repository extends org.springframework.data.repository.Repo
 	@Query(value = """
 			INSERT INTO sim2_submissions (run_id, round_number, submitted_by, file_path,
 			                              original_filename, typed_answer, confidence,
-			                              active_seconds_used, is_correct, score_detail)
+			                              active_seconds_used, is_correct, outcome_pct, score_detail)
 			VALUES (:runId, :roundNumber, :submittedBy, :filePath, :originalFilename,
-			        :typedAnswer, :confidence, :activeSeconds, :isCorrect, CAST(:scoreDetail AS jsonb))
+			        :typedAnswer, :confidence, :activeSeconds, :isCorrect, :outcomePct, CAST(:scoreDetail AS jsonb))
 			""", nativeQuery = true)
 	void insertSubmission(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber,
 			@Param("submittedBy") UUID submittedBy, @Param("filePath") String filePath,
 			@Param("originalFilename") String originalFilename, @Param("typedAnswer") String typedAnswer,
 			@Param("confidence") String confidence, @Param("activeSeconds") Integer activeSeconds,
-			@Param("isCorrect") Boolean isCorrect, @Param("scoreDetail") String scoreDetail);
+			@Param("isCorrect") Boolean isCorrect, @Param("outcomePct") Integer outcomePct,
+			@Param("scoreDetail") String scoreDetail);
+
+	/** The stored per-round Outcome percentage (0-100), or null if the round was not submitted. */
+	@Query(value = "SELECT outcome_pct FROM sim2_submissions WHERE run_id = :runId AND round_number = :roundNumber",
+			nativeQuery = true)
+	Integer findRoundOutcome(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
 
 	@Query(value = """
 			SELECT round_number AS "roundNumber", typed_answer AS "typedAnswer",
