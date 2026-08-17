@@ -261,6 +261,31 @@ public interface FacultyRepository extends org.springframework.data.repository.R
 			""", nativeQuery = true)
 	void markRoundBypassed(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
 
+	// ── Round restart (undo an accidental submission) ────────────────────────
+	/** The most recent round a team has completed (submitted), or null if none yet. */
+	@Query(value = "SELECT max(round_number) FROM sim2_round_state WHERE run_id = :runId AND status = 'COMPLETE'",
+			nativeQuery = true)
+	Integer findLastCompleteSim2Round(@Param("runId") UUID runId);
+
+	@Modifying
+	@Query(value = "DELETE FROM sim2_submissions WHERE run_id = :runId AND round_number = :roundNumber",
+			nativeQuery = true)
+	void deleteSim2Submission(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
+
+	/** Removes the round's per-round construct scores AND any finalised run-level (round 0) scores. */
+	@Modifying
+	@Query(value = "DELETE FROM sim2_construct_scores WHERE run_id = :runId AND round_number IN (:roundNumber, 0)",
+			nativeQuery = true)
+	void deleteSim2RoundScores(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
+
+	/** Re-opens a round so the team can submit it again; the clock is untouched. */
+	@Modifying
+	@Query(value = """
+			UPDATE sim2_round_state SET status = 'ACTIVE', completed_at = NULL
+			WHERE run_id = :runId AND round_number = :roundNumber
+			""", nativeQuery = true)
+	void reopenSim2Round(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
+
 	// =========================================================================
 	// Injection
 	// =========================================================================
