@@ -52,9 +52,7 @@ FROM rounds r WHERE a.round_id = r.round_id AND r.simulation_id = sim
 -- ── Round 4 memo ────────────────────────────────────────────────────────────
 UPDATE artifacts a SET payload = jsonb_set(
   jsonb_set(a.payload, '{title}', to_jsonb('Show me, don''t tell me'::text)),
-  '{body}', to_jsonb($t$The Board doesn't read spreadsheets. Build me two visuals: what we sell the most of, and when we sell the most of it. Use whichever tool you're more comfortable with, Tableau or Power BI; they're both built to do the same job here, so pick one and build something the Board could actually look at. If your team decides this dashboard is good enough to present as-is, it can become part of what you show the Board directly in the next stage.
-
-Attached: the combined dataset from Round 3$t$::text))
+  '{body}', to_jsonb($t$The Board doesn't read spreadsheets. Build me two visuals: what we sell the most of, and when we sell the most of it. Use whichever tool you're more comfortable with, Tableau or Power BI; they're both built to do the same job here, so pick one and build something the Board could actually look at. If your team decides this dashboard is good enough to present as-is, it can become part of what you show the Board directly in the next stage.$t$::text))
 FROM rounds r WHERE a.round_id = r.round_id AND r.simulation_id = sim
   AND r.round_number = 4 AND a.artifact_type = 'BOARD_MEMO';
 
