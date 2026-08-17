@@ -49,6 +49,16 @@ public class FacultyController {
 		return service.status(runId, roundNumber);
 	}
 
+	@PostMapping("/runs/{runId}/restart-last-round")
+	public ResponseEntity<?> restartLastRound(@PathVariable UUID runId,
+			@RequestBody(required = false) Map<String, String> body) {
+		try {
+			return ResponseEntity.ok(service.restartLastRound(runId, note(body), actor(body)));
+		} catch (IllegalStateException e) {
+			return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+		}
+	}
+
 	@PostMapping("/runs/{runId}/terminate")
 	public Map<String, Object> terminate(@PathVariable UUID runId,
 			@RequestBody(required = false) Map<String, String> body) {

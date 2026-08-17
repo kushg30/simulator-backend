@@ -134,6 +134,26 @@ public class FacultyService {
 				"note", "Excluded from the construct rollup, not scored as zero");
 	}
 
+	// ------------------------------------------------------- restart a round
+
+	/**
+	 * Undo an accidental submission: re-open the most recently submitted round so the team can
+	 * submit it again. Removes that round's submission and construct scores (and any finalised
+	 * run-level scores). The round clock is deliberately left running.
+	 */
+	public Map<String, Object> restartLastRound(UUID runId, String note, String actor) {
+		Integer round = repository.findLastCompleteSim2Round(runId);
+		if (round == null) {
+			throw new IllegalStateException("This team has not submitted a round yet");
+		}
+		repository.deleteSim2Submission(runId, round);
+		repository.deleteSim2RoundScores(runId, round);
+		repository.reopenSim2Round(runId, round);
+		log(runId, round, "RESTART", "TEAM", null, null, null, note, actor);
+		return Map.of("runId", runId, "roundNumber", round, "restarted", true,
+				"note", "Round " + round + " re-opened for submission; the clock kept running");
+	}
+
 	// ------------------------------------------------------------- terminate
 
 	/**
