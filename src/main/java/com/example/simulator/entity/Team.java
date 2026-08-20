@@ -15,10 +15,21 @@ public class Team {
 
     private String teamName;
 
+    /** Short human-readable code students type to join, instead of the UUID team id. */
+    private String joinCode;
+
     private boolean locked = false;
 
     /** Which simulation this team is playing. Null is treated as Simulation 1. */
     private UUID simulationId;
+
+	public String getJoinCode() {
+		return joinCode;
+	}
+
+	public void setJoinCode(String joinCode) {
+		this.joinCode = joinCode;
+	}
 
 	public UUID getSimulationId() {
 		return simulationId;

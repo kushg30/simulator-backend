@@ -45,6 +45,12 @@ public class TeamController {
         return service.joinTeam(teamId, req.get("participantName"));
     }
     
+    // 🔎 RESOLVE a short join code → team id
+    @GetMapping("/resolve/{code}")
+    public Map<String, Object> resolveCode(@PathVariable String code) {
+        return service.resolveCode(code);
+    }
+
     @GetMapping("/{teamId}/roles")
     public Map<String, String> getRoles(@PathVariable UUID teamId) {
         return service.getRoles(teamId);
