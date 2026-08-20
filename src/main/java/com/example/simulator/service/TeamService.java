@@ -53,6 +53,7 @@ public class TeamService {
         Team team = new Team();
         team.setTeamName(teamName);
         team.setSimulationId(sim);
+        team.setJoinCode(generateJoinCode());
         teamRepo.save(team);
 
         Participant participant = new Participant();
@@ -65,9 +66,31 @@ public class TeamService {
         response.put("teamId", team.getTeamId());
         response.put("participantId", participant.getParticipantId());
         response.put("role", leadRole);
+        response.put("joinCode", team.getJoinCode());
         response.put("simulationId", sim);
 
         return response;
+    }
+
+    /** A short 4-digit code, unique among still-live teams, for students to type when joining. */
+    private String generateJoinCode() {
+        for (int attempt = 0; attempt < 50; attempt++) {
+            String code = String.valueOf(1000 + java.util.concurrent.ThreadLocalRandom.current().nextInt(9000));
+            if (teamRepo.countLiveByJoinCode(code) == 0) {
+                return code;
+            }
+        }
+        // Extremely unlikely fallback: 5 digits.
+        return String.valueOf(10000 + java.util.concurrent.ThreadLocalRandom.current().nextInt(90000));
+    }
+
+    /** Resolve a join code to the live team's id. Throws if no live team uses that code. */
+    public Map<String, Object> resolveCode(String code) {
+        UUID teamId = teamRepo.resolveLiveTeamByCode(code == null ? "" : code.trim());
+        if (teamId == null) {
+            throw new RuntimeException("No active team found for code " + code);
+        }
+        return Map.of("teamId", teamId);
     }
 
     // 🟢 JOIN TEAM
