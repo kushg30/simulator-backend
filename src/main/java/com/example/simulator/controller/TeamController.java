@@ -51,6 +51,12 @@ public class TeamController {
         return service.resolveCode(code);
     }
 
+    // ℹ️ Team info (name + join code) for display on the role / round screens
+    @GetMapping("/{teamId}")
+    public Map<String, Object> getTeam(@PathVariable UUID teamId) {
+        return service.getTeamInfo(teamId);
+    }
+
     @GetMapping("/{teamId}/roles")
     public Map<String, String> getRoles(@PathVariable UUID teamId) {
         return service.getRoles(teamId);

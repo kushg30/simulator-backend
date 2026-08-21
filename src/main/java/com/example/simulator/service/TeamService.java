@@ -43,6 +43,15 @@ public class TeamService {
     // 🔵 CREATE TEAM (creator becomes the simulation's lead role)
     public Map<String, Object> createTeam(String teamName, String participantName, UUID simulationId) {
 
+        // Team name must not be blank or all digits (would clash with the numeric join code).
+        String name = teamName == null ? "" : teamName.trim();
+        if (name.isEmpty()) {
+            throw new RuntimeException("Team name is required");
+        }
+        if (name.matches("\\d+")) {
+            throw new RuntimeException("Team name can't be only numbers — add a letter or word");
+        }
+
         UUID sim = (simulationId != null) ? simulationId : defaultSimulationId;
 
         String leadRole = simulationRoleRepo.findLeadRoleCode(sim);
@@ -51,7 +60,7 @@ public class TeamService {
         }
 
         Team team = new Team();
-        team.setTeamName(teamName);
+        team.setTeamName(name);
         team.setSimulationId(sim);
         team.setJoinCode(generateJoinCode());
         teamRepo.save(team);
@@ -82,6 +91,16 @@ public class TeamService {
         }
         // Extremely unlikely fallback: 5 digits.
         return String.valueOf(10000 + java.util.concurrent.ThreadLocalRandom.current().nextInt(90000));
+    }
+
+    /** Basic team info (name + join code) for display on the role / round screens. */
+    public Map<String, Object> getTeamInfo(UUID teamId) {
+        Team team = teamRepo.findById(teamId).orElseThrow(() -> new RuntimeException("Team not found"));
+        Map<String, Object> info = new HashMap<>();
+        info.put("teamId", team.getTeamId());
+        info.put("teamName", team.getTeamName());
+        info.put("joinCode", team.getJoinCode());
+        return info;
     }
 
     /** Resolve a join code to the live team's id. Throws if no live team uses that code. */
