@@ -2,6 +2,7 @@ package com.example.simulator.controller;
 
 import java.util.*;
 
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -25,15 +26,19 @@ public class TeamController {
     // `simulationId` is optional: when omitted the team is assigned to the default
     // simulation (Sim 1), which keeps the existing Sim-1 frontend working unchanged.
     @PostMapping
-    public Map<String, Object> createTeam(@RequestBody Map<String, String> req) {
+    public ResponseEntity<?> createTeam(@RequestBody Map<String, String> req) {
 
         String simulationId = req.get("simulationId");
-
-        return service.createTeam(
-                req.get("teamName"),
-                req.get("participantName"),
-                (simulationId == null || simulationId.isBlank()) ? null : UUID.fromString(simulationId)
-        );
+        try {
+            return ResponseEntity.ok(service.createTeam(
+                    req.get("teamName"),
+                    req.get("participantName"),
+                    (simulationId == null || simulationId.isBlank()) ? null : UUID.fromString(simulationId)
+            ));
+        } catch (RuntimeException e) {
+            // Validation errors (e.g. blank / all-numeric team name) → clean 400, not a 500.
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
     }
 
     // 🟢 JOIN TEAM
