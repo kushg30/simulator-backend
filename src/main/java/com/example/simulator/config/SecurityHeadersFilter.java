@@ -23,7 +23,7 @@ import jakarta.servlet.http.HttpServletResponse;
 public class SecurityHeadersFilter {
 
     @Bean
-    public FilterRegistrationBean<Filter> securityHeadersFilter() {
+    public FilterRegistrationBean<Filter> securityHeadersFilterRegistration() {
         Filter filter = new Filter() {
             @Override
             public void doFilter(ServletRequest req, ServletResponse res, FilterChain chain)
