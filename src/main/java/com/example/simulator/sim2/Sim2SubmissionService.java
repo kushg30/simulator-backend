@@ -10,6 +10,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,6 +25,8 @@ import org.springframework.web.multipart.MultipartFile;
 @Service
 @Transactional
 public class Sim2SubmissionService {
+
+	private static final Logger log = LoggerFactory.getLogger(Sim2SubmissionService.class);
 
 	/**
 	 * Each round is owned and submitted by exactly one role (v5 script). Only that role may submit
@@ -162,7 +166,10 @@ public class Sim2SubmissionService {
 			}
 			return target.toAbsolutePath().toString();
 		} catch (IOException e) {
-			throw new IllegalStateException("Could not store submission file: " + e.getMessage(), e);
+			// Log the real cause (path, IO detail) server-side; the client gets a generic message
+			// so no server filesystem detail leaks out.
+			log.error("Failed to store submission file for run {} round {}", runId, roundNumber, e);
+			throw new IllegalStateException("Could not save your submission file. Please try again.");
 		}
 	}
 

@@ -25,15 +25,15 @@ import jakarta.servlet.http.HttpServletResponse;
  * round, bypass a twist and read grading state, so leaving them open would hand students the
  * controls of their own assessment.
  *
- * <p>Send the token as {@code X-Faculty-Token: <token>} (or {@code ?facultyToken=} for convenience
- * when clicking through a browser). Configure it with {@code faculty.access-token}; if that
- * property is left blank the filter refuses every request rather than failing open.
+ * <p>Send the token in the {@code X-Faculty-Token: <token>} request header only. It is deliberately
+ * NOT accepted as a URL query parameter: query strings leak into browser history, server access logs
+ * and Referer headers, which would leak the credential. Configure it with {@code faculty.access-token};
+ * if that property is left blank the filter refuses every request rather than failing open.
  */
 @Configuration
 public class FacultyAuthFilter {
 
 	public static final String HEADER = "X-Faculty-Token";
-	public static final String QUERY_PARAM = "facultyToken";
 	private static final String PROTECTED_PREFIX = "/api/faculty";
 
 	@Bean
@@ -55,9 +55,6 @@ public class FacultyAuthFilter {
 				}
 
 				String supplied = request.getHeader(HEADER);
-				if (supplied == null || supplied.isBlank()) {
-					supplied = request.getParameter(QUERY_PARAM);
-				}
 
 				// Fail closed: an unset token locks the endpoints rather than opening them.
 				if (configuredToken == null || configuredToken.isBlank()) {
