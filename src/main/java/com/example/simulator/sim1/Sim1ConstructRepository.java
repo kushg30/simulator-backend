@@ -58,4 +58,14 @@ public interface Sim1ConstructRepository
             WHERE sr.run_id = :runId
             """, nativeQuery = true)
     String findTeamName(@Param("runId") UUID runId);
+
+    /** Every Simulator-1 run for a simulation that has recorded at least one decision, newest first. */
+    @Query(value = """
+            SELECT sr.run_id AS "runId", sr.team_name AS "teamName", sr.started_at AS "startedAt"
+            FROM simulation_runs sr
+            WHERE sr.simulation_id = :simulationId
+              AND EXISTS (SELECT 1 FROM decision_events de WHERE de.run_id = sr.run_id)
+            ORDER BY sr.started_at DESC
+            """, nativeQuery = true)
+    List<Map<String, Object>> findRunsForSimulation(@Param("simulationId") UUID simulationId);
 }

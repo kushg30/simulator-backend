@@ -145,6 +145,63 @@ public class Sim1ConstructService {
                 : (int) Math.round(vs.stream().mapToInt(Integer::intValue).average().orElse(BASELINE));
     }
 
+    /** Every played team for a simulation, plus auto-generated class-level insight statements. */
+    public Map<String, Object> cohort(UUID simulationId) {
+        List<Map<String, Object>> teams = new ArrayList<>();
+        for (Map<String, Object> run : repo.findRunsForSimulation(simulationId)) {
+            Map<String, Object> team = constructs((UUID) run.get("runId"));
+            team.put("startedAt", run.get("startedAt"));
+            teams.add(team);
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("constructOrder", CONSTRUCTS);
+        out.put("teams", teams);
+        out.put("classInsights", classInsights(teams));
+        return out;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<String> classInsights(List<Map<String, Object>> teams) {
+        List<String> out = new ArrayList<>();
+        int n = teams.size();
+        if (n == 0) {
+            return out;
+        }
+        int normalized = 0, narrowed = 0, foreclosed = 0, legitimized = 0;
+        Map<String, Integer> patterns = new LinkedHashMap<>();
+        for (Map<String, Object> t : teams) {
+            Map<String, Object> team = (Map<String, Object>) t.get("team");
+            Map<String, Object> cons = (Map<String, Object>) team.get("constructs");
+            String eslBand = (String) ((Map<String, Object>) cons.get(ESL)).get("band");
+            String oscBand = (String) ((Map<String, Object>) cons.get(OSC)).get("band");
+            if ("Low".equals(eslBand)) normalized++;
+            if ("High".equals(eslBand)) legitimized++;
+            if ("High".equals(oscBand)) narrowed++;
+            Map<String, Object> eff = (Map<String, Object>) team.get("effects");
+            if (Boolean.TRUE.equals(eff.get("escalationForeclosed"))) {
+                foreclosed++;
+            }
+            patterns.merge((String) team.get("dominantPattern"), 1, Integer::sum);
+        }
+        out.add(pct(normalized, n) + "% of teams normalized weak signals before escalation became "
+                + "legitimate (low Early Signal Legitimization).");
+        out.add(pct(narrowed, n) + "% of teams narrowed their option space to High by the final round.");
+        if (legitimized > 0) {
+            out.add(pct(legitimized, n) + "% of teams legitimized the signal early and kept options open.");
+        }
+        if (foreclosed > 0) {
+            out.add(pct(foreclosed, n) + "% crossed the Round-1 silence threshold that forecloses escalation.");
+        }
+        patterns.entrySet().stream().max(Map.Entry.comparingByValue()).ifPresent(e ->
+                out.add("The most common leadership pattern was \"" + e.getKey() + "\" (" + e.getValue()
+                        + " of " + n + " teams)."));
+        return out;
+    }
+
+    private int pct(int x, int n) {
+        return (int) Math.round(100.0 * x / n);
+    }
+
     private int clamp(int v) {
         return Math.max(0, Math.min(100, v));
     }

@@ -29,4 +29,10 @@ public class Sim1ConstructController {
     public Map<String, Object> constructs(@PathVariable UUID runId) {
         return service.constructs(runId);
     }
+
+    /** Every played team for a simulation, plus class-level insight statements. */
+    @GetMapping("/simulations/{simulationId}/constructs")
+    public Map<String, Object> cohort(@PathVariable UUID simulationId) {
+        return service.cohort(simulationId);
+    }
 }
