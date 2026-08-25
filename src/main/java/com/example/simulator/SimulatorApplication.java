@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory;
 @EnableJpaRepositories(basePackages = {
 		"com.example.simulator.repository", // platform + Simulation 1
 		"com.example.simulator.simulation", // Simulation 1 faculty debrief
+		"com.example.simulator.sim1",       // Simulator 1 Set-B construct engine
 		"com.example.simulator.sim2",       // Simulator 2 (Meridian Retail QBR) engine
 		"com.example.simulator.faculty"     // platform-wide faculty control layer
 })
