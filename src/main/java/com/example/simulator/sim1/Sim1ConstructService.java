@@ -40,17 +40,23 @@ public class Sim1ConstructService {
     private static final int BASELINE = 50;
 
     public Map<String, Object> constructs(UUID runId) {
-        // participantId -> construct -> summed weighted delta
+        // participantId -> construct -> summed weighted delta (all rounds); plus Round-1-only silence.
         Map<UUID, Map<String, Double>> deltas = new HashMap<>();
+        Map<UUID, Double> r1Silence = new HashMap<>();
         for (Map<String, Object> row : repo.findConstructDeltas(runId)) {
             UUID pid = (UUID) row.get("participantId");
-            deltas.computeIfAbsent(pid, k -> new HashMap<>())
-                    .put((String) row.get("construct"), ((Number) row.get("weighted")).doubleValue());
+            String c = (String) row.get("construct");
+            double w = ((Number) row.get("weighted")).doubleValue();
+            deltas.computeIfAbsent(pid, k -> new HashMap<>()).merge(c, w, Double::sum);
+            if (SIL.equals(c) && ((Number) row.get("round")).intValue() == 1) {
+                r1Silence.merge(pid, w, Double::sum);
+            }
         }
 
         List<Map<String, Object>> participants = new ArrayList<>();
         Map<String, List<Integer>> agg = new LinkedHashMap<>();
         CONSTRUCTS.forEach(c -> agg.put(c, new ArrayList<>()));
+        List<Integer> r1SilVals = new ArrayList<>();
 
         for (Map<String, Object> p : repo.findRunParticipants(runId)) {
             UUID pid = (UUID) p.get("participantId");
@@ -61,6 +67,7 @@ public class Sim1ConstructService {
                 cons.put(c, band(val));
                 agg.get(c).add(val);
             }
+            r1SilVals.add(clamp((int) Math.round(BASELINE + r1Silence.getOrDefault(pid, 0.0))));
             Map<String, Object> pr = new LinkedHashMap<>();
             pr.put("participantId", pid);
             pr.put("role", p.get("role"));
@@ -69,19 +76,60 @@ public class Sim1ConstructService {
             participants.add(pr);
         }
 
-        Map<String, Object> teamCons = new LinkedHashMap<>();
+        // Team base = mean of participants per construct.
         Map<String, Integer> teamVals = new LinkedHashMap<>();
         for (String c : CONSTRUCTS) {
-            List<Integer> vs = agg.get(c);
-            int mean = vs.isEmpty() ? BASELINE
-                    : (int) Math.round(vs.stream().mapToInt(Integer::intValue).average().orElse(BASELINE));
-            teamVals.put(c, mean);
-            teamCons.put(c, band(mean));
+            teamVals.put(c, mean(agg.get(c)));
         }
+        int round1Silence = mean(r1SilVals);
+
+        // ── Phase 2: interaction + threshold on Option Space Contraction ──────────
+        // Silence and framing compound to accelerate option-space loss (spec's interaction formula,
+        // normalized): extra = (Sil*0.4 + Frm*0.3 + Sil*Frm*0.5) over 0-1, scaled to ~0-30 points.
+        double sil01 = teamVals.get(SIL) / 100.0;
+        double frm01 = teamVals.get(FRM) / 100.0;
+        int interaction = (int) Math.round((sil01 * 0.4 + frm01 * 0.3 + sil01 * frm01 * 0.5) * 25);
+        int oscBase = teamVals.get(OSC);
+        int oscAdjusted = clamp(oscBase + interaction);
+
+        // Threshold: Round-1 silence at/above 65 forecloses Round-2 escalation — options were already
+        // effectively closed entering Round 2, so option-space contraction takes a further step.
+        boolean escalationForeclosed = round1Silence >= 65;
+        if (escalationForeclosed) {
+            oscAdjusted = clamp(oscAdjusted + 15);
+        }
+        teamVals.put(OSC, oscAdjusted);
+
+        Map<String, Object> teamCons = new LinkedHashMap<>();
+        for (String c : CONSTRUCTS) {
+            teamCons.put(c, band(teamVals.get(c)));
+        }
+
+        List<String> insights = new ArrayList<>();
+        if (escalationForeclosed) {
+            insights.add("Round-1 silence foreclosed escalation — options were effectively closed entering "
+                    + "Round 2 (Silence R1 = " + round1Silence + ").");
+        }
+        if (interaction >= 10) {
+            insights.add("Silence and framing compounded to accelerate option-space contraction (+"
+                    + interaction + ").");
+        }
+        if (teamVals.get(ESL) >= 70) {
+            insights.add("Weak signals were legitimized early and the team kept its options open.");
+        }
+
+        Map<String, Object> effects = new LinkedHashMap<>();
+        effects.put("optionSpaceBase", oscBase);
+        effects.put("optionSpaceInteraction", interaction);
+        effects.put("round1Silence", round1Silence);
+        effects.put("escalationForeclosed", escalationForeclosed);
+        effects.put("optionSpaceAdjusted", oscAdjusted);
 
         Map<String, Object> team = new LinkedHashMap<>();
         team.put("constructs", teamCons);
         team.put("dominantPattern", dominantPattern(teamVals));
+        team.put("effects", effects);
+        team.put("insights", insights);
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("runId", runId);
@@ -90,6 +138,11 @@ public class Sim1ConstructService {
         out.put("participants", participants);
         out.put("team", team);
         return out;
+    }
+
+    private int mean(List<Integer> vs) {
+        return vs.isEmpty() ? BASELINE
+                : (int) Math.round(vs.stream().mapToInt(Integer::intValue).average().orElse(BASELINE));
     }
 
     private int clamp(int v) {

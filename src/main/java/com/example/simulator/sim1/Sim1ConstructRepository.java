@@ -27,6 +27,7 @@ public interface Sim1ConstructRepository
     @Query(value = """
             SELECT de.run_participant_id AS "participantId",
                    oc.construct_name      AS "construct",
+                   r.round_number         AS "round",
                    SUM(oc.base_delta * CASE WHEN a.open_offset_min <= 10 THEN 1.5
                                             WHEN a.open_offset_min <= 20 THEN 1.0
                                             ELSE 0.7 END) AS "weighted"
@@ -34,8 +35,9 @@ public interface Sim1ConstructRepository
             JOIN decision_options o         ON o.decision_id = de.decision_id AND o.action = de.action
             JOIN sim1_option_constructs oc  ON oc.option_id = o.option_id
             JOIN artifacts a                ON a.artifact_id = de.artifact_id
+            JOIN rounds r                   ON r.round_id = a.round_id
             WHERE de.run_id = :runId
-            GROUP BY de.run_participant_id, oc.construct_name
+            GROUP BY de.run_participant_id, oc.construct_name, r.round_number
             """, nativeQuery = true)
     List<Map<String, Object>> findConstructDeltas(@Param("runId") UUID runId);
 
