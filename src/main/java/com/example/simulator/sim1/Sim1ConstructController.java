@@ -10,15 +10,17 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * Faculty-only Set-B construct readout for Simulator 1. Mapped under {@code /api/faculty/**} so it inherits
- * the facilitator-token gate — students never see these numbers.
+ * the facilitator-token gate — students never see these numbers. Kept separate from the existing
+ * {@code com.example.simulator.simulation.Sim1DebriefController} (which serves the Set-A debrief); this one
+ * only adds the per-run construct endpoint, so the class name must differ to avoid a bean collision.
  */
 @RestController
 @RequestMapping("/api/faculty/sim1")
-public class Sim1DebriefController {
+public class Sim1ConstructController {
 
     private final Sim1ConstructService service;
 
-    public Sim1DebriefController(Sim1ConstructService service) {
+    public Sim1ConstructController(Sim1ConstructService service) {
         this.service = service;
     }
 
