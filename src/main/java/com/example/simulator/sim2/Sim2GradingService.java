@@ -2,6 +2,7 @@ package com.example.simulator.sim2;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -159,6 +160,91 @@ public class Sim2GradingService {
 		BigDecimal mc = firstNumber(field(s, 3));
 		int mcp = mc != null && mc.compareTo(new BigDecimal(90)) == 0 ? 25 : 0;
 		return p + pcp + m + mcp;
+	}
+
+	// ── Per-field feedback ("what you missed") ────────────────────────────────
+	// Mirrors the Outcome formulas above, but returns a per-field verdict + the
+	// correct value for the ones missed. Faculty-facing (it names the expected
+	// answer), so it powers the debrief and the team report — never a student's
+	// live screen. Round 5 is free text, so it returns an empty list.
+
+	/** Per-graded-field feedback for a round's submission: [{label, ok, detail}]. */
+	public List<Map<String, Object>> fieldBreakdown(int round, String typedAnswer) {
+		String s = typedAnswer == null ? "" : typedAnswer.trim();
+		List<Map<String, Object>> out = new ArrayList<>();
+		switch (round) {
+			case 1 -> {
+				out.add(fb("Bluetooth revenue", within(field(s, 0), 62667, 0.01, true), "expected 62,667"));
+				out.add(round1TagFeedback(s));
+			}
+			case 2 -> {
+				out.add(fb("Root cause", normalizeText(field(s, 0)).contains("people"),
+						"expected People (Training & Skill Gap)"));
+				out.add(fb("Attainment gap", within(field(s, 1), 25.5, 1.0, false), "expected ≈ 25.5"));
+			}
+			case 3 -> {
+				BigDecimal rows = firstNumber(field(s, 0));
+				out.add(fb("Combined row count", rows != null && rows.compareTo(new BigDecimal(270)) == 0,
+						"expected 270"));
+				out.add(fb("Combined revenue", within(field(s, 1), 1381546, 0.01, true),
+						"expected 1,381,546"));
+			}
+			case 4 -> {
+				out.add(fb("Most-ordered product", normalizeText(field(s, 0)).contains("notebook set"),
+						"expected Notebook Set"));
+				BigDecimal pc = firstNumber(field(s, 1));
+				out.add(fb("Product order count", pc != null && pc.compareTo(new BigDecimal(35)) == 0,
+						"expected 35"));
+				out.add(fb("Peak month", normalizeText(field(s, 2)).contains("april"), "expected April"));
+				BigDecimal mc = firstNumber(field(s, 3));
+				out.add(fb("Peak-month order count", mc != null && mc.compareTo(new BigDecimal(90)) == 0,
+						"expected 90"));
+			}
+			default -> { /* Round 5 is a free-text reflection — not field-graded. */ }
+		}
+		return out;
+	}
+
+	private Map<String, Object> fb(String label, boolean ok, String expected) {
+		Map<String, Object> m = new LinkedHashMap<>();
+		m.put("label", label);
+		m.put("ok", ok);
+		m.put("detail", ok ? "correct" : expected);
+		return m;
+	}
+
+	/** R1 data-issue tags, as one feedback line naming which of the three were matched or missed. */
+	private Map<String, Object> round1TagFeedback(String s) {
+		String tags = seg(s, "issues:").toLowerCase();
+		String[] all = { "improper formatting", "incomplete", "duplicated" };
+		String[] nice = { "Improper Formatting", "Incomplete", "Duplicated" };
+		List<String> missed = new ArrayList<>();
+		int matched = 0;
+		for (int i = 0; i < all.length; i++) {
+			if (tags.contains(all[i])) {
+				matched++;
+			} else {
+				missed.add(nice[i]);
+			}
+		}
+		boolean falsePositive = tags.contains("incorrect");
+		boolean ok = matched == 3 && !falsePositive;
+		String detail;
+		if (ok) {
+			detail = "all 3 flagged";
+		} else if (matched == 0) {
+			detail = "no valid issues flagged";
+		} else {
+			detail = "flagged " + matched + " of 3 — missed " + String.join(", ", missed);
+			if (falsePositive) {
+				detail += " (and a false positive)";
+			}
+		}
+		Map<String, Object> m = new LinkedHashMap<>();
+		m.put("label", "Data-issue tags");
+		m.put("ok", ok);
+		m.put("detail", detail);
+		return m;
 	}
 
 	/**

@@ -613,7 +613,9 @@ public interface Sim2Repository extends org.springframework.data.repository.Repo
 
 	/** Per-round correctness for a run, for the debrief timeline. */
 	@Query(value = """
-			SELECT round_number AS "roundNumber", is_correct AS "correct", confidence AS "confidence"
+			SELECT round_number AS "roundNumber", is_correct AS "correct",
+			       outcome_pct AS "outcomePct", typed_answer AS "typedAnswer",
+			       confidence AS "confidence"
 			FROM sim2_submissions
 			WHERE run_id = :runId
 			ORDER BY round_number

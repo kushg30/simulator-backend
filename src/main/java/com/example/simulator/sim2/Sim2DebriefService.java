@@ -24,9 +24,11 @@ import org.springframework.transaction.annotation.Transactional;
 public class Sim2DebriefService {
 
 	private final Sim2Repository repository;
+	private final Sim2GradingService grading;
 
-	public Sim2DebriefService(Sim2Repository repository) {
+	public Sim2DebriefService(Sim2Repository repository, Sim2GradingService grading) {
 		this.repository = repository;
+		this.grading = grading;
 	}
 
 	private static final List<String> CONSTRUCTS = List.of(
@@ -239,8 +241,20 @@ public class Sim2DebriefService {
 			r.put("finishedAt", t.finishedAt());
 			r.put("scores", t.values());
 			r.put("overrides", t.overrides()); // construct -> facilitator who overrode it
-			// Per-round correctness for the answer grid: [{roundNumber, correct, confidence}].
-			r.put("submissions", repository.findSubmissionTimeline(t.runId()));
+			// Per-round answers for the grid: [{roundNumber, correct, outcomePct, confidence,
+			// typedAnswer, feedback:[{label, ok, detail}]}] — feedback names the fields missed.
+			List<Map<String, Object>> subs = new ArrayList<>();
+			for (Map<String, Object> row : repository.findSubmissionTimeline(t.runId())) {
+				Map<String, Object> sub = new LinkedHashMap<>(row);
+				Object rn = row.get("roundNumber");
+				if (rn != null) {
+					Object ans = row.get("typedAnswer");
+					sub.put("feedback",
+							grading.fieldBreakdown(((Number) rn).intValue(), ans == null ? "" : ans.toString()));
+				}
+				subs.add(sub);
+			}
+			r.put("submissions", subs);
 			r.putAll(flags(t.runId()));
 			rows.add(r);
 		}
