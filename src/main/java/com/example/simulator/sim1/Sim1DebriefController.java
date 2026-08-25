@@ -1,0 +1,30 @@
+package com.example.simulator.sim1;
+
+import java.util.Map;
+import java.util.UUID;
+
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+/**
+ * Faculty-only Set-B construct readout for Simulator 1. Mapped under {@code /api/faculty/**} so it inherits
+ * the facilitator-token gate — students never see these numbers.
+ */
+@RestController
+@RequestMapping("/api/faculty/sim1")
+public class Sim1DebriefController {
+
+    private final Sim1ConstructService service;
+
+    public Sim1DebriefController(Sim1ConstructService service) {
+        this.service = service;
+    }
+
+    /** The five constructs per participant and for the team (values + Low/Med/High bands). */
+    @GetMapping("/runs/{runId}/constructs")
+    public Map<String, Object> constructs(@PathVariable UUID runId) {
+        return service.constructs(runId);
+    }
+}
