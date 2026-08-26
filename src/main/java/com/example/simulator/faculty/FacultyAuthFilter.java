@@ -54,15 +54,21 @@ public class FacultyAuthFilter {
 					return;
 				}
 
+				// Trim both sides: pasting a token into a hosting env-var field (or the login box)
+				// very often adds a trailing newline/space, which would otherwise reject a token
+				// that is actually correct. Whitespace is never meaningful in this token.
+				String configured = configuredToken == null ? "" : configuredToken.trim();
 				String supplied = request.getHeader(HEADER);
+				String suppliedTrimmed = supplied == null ? null : supplied.trim();
 
 				// Fail closed: an unset token locks the endpoints rather than opening them.
-				if (configuredToken == null || configuredToken.isBlank()) {
+				if (configured.isBlank()) {
 					deny(response, "Faculty controls are disabled: faculty.access-token is not configured");
 					return;
 				}
 
-				if (supplied == null || !constantTimeEquals(configuredToken, supplied)) {
+				if (suppliedTrimmed == null || suppliedTrimmed.isBlank()
+						|| !constantTimeEquals(configured, suppliedTrimmed)) {
 					deny(response, "Invalid or missing facilitator token");
 					return;
 				}
