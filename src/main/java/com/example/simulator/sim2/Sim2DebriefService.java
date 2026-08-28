@@ -255,6 +255,7 @@ public class Sim2DebriefService {
 				subs.add(sub);
 			}
 			r.put("submissions", subs);
+			r.put("participants", repository.findRunParticipants(t.runId())); // roster for the report
 			r.putAll(flags(t.runId()));
 			rows.add(r);
 		}

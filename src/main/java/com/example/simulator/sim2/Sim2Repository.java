@@ -621,4 +621,14 @@ public interface Sim2Repository extends org.springframework.data.repository.Repo
 			ORDER BY round_number
 			""", nativeQuery = true)
 	List<Map<String, Object>> findSubmissionTimeline(@Param("runId") UUID runId);
+
+	/** The team's members (role + name) for a run — for the takeaway report roster. */
+	@Query(value = """
+			SELECT rp.role AS "role", p.name AS "name"
+			FROM run_participants rp
+			LEFT JOIN participant p ON p.participant_id = rp.run_participant_id
+			WHERE rp.run_id = :runId
+			ORDER BY rp.role
+			""", nativeQuery = true)
+	List<Map<String, Object>> findRunParticipants(@Param("runId") UUID runId);
 }
