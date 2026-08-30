@@ -286,6 +286,16 @@ public interface FacultyRepository extends org.springframework.data.repository.R
 			""", nativeQuery = true)
 	void reopenSim2Round(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
 
+	/**
+	 * Brings a run back to life if it was terminated, so a restart can recover a team ended by
+	 * mistake. A restart on a TERMINATED run otherwise re-opens the round while the run stays dead —
+	 * the round shows ACTIVE but the team is stuck (the SIBM "restart stuck on R3" symptom).
+	 */
+	@Modifying
+	@Query(value = "UPDATE simulation_runs SET status = 'ACTIVE' WHERE run_id = :runId AND status = 'TERMINATED'",
+			nativeQuery = true)
+	void reactivateRun(@Param("runId") UUID runId);
+
 	// =========================================================================
 	// Injection
 	// =========================================================================

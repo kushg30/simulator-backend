@@ -149,6 +149,7 @@ public class FacultyService {
 		repository.deleteSim2Submission(runId, round);
 		repository.deleteSim2RoundScores(runId, round);
 		repository.reopenSim2Round(runId, round);
+		repository.reactivateRun(runId); // recover a run that was terminated by mistake
 		log(runId, round, "RESTART", "TEAM", null, null, null, note, actor);
 		return Map.of("runId", runId, "roundNumber", round, "restarted", true,
 				"note", "Round " + round + " re-opened for submission; the clock kept running");
