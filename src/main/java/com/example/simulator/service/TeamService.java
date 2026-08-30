@@ -153,7 +153,7 @@ public class TeamService {
         return roles;
     }
 
-    public void assignRole(UUID teamId, UUID participantId, String role) {
+    public void assignRole(UUID teamId, UUID participantId, String role, String name) {
 
         UUID sim = resolveSimulationId(teamId);
 
@@ -176,6 +176,10 @@ public class TeamService {
             .orElseThrow();
 
         participant.setRole(role);
+        // A joiner supplies their name here (they join by code only); set it if provided.
+        if (name != null && !name.isBlank()) {
+            participant.setName(name.trim());
+        }
         participantRepo.save(participant);
     }
 

@@ -60,6 +60,7 @@ public class ArtifactReadService {
 		out.put("roundNumber", active.get("roundNumber"));
 		out.put("startedAt", active.get("startedAt"));
 		out.put("totalRounds", active.get("totalRounds"));
+		out.put("durationMinutes", active.get("durationMinutes")); // for the round countdown timer
 		return out;
 	}
 

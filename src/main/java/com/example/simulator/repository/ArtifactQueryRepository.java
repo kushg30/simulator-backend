@@ -154,7 +154,9 @@ public interface ArtifactQueryRepository extends org.springframework.data.reposi
 			SELECT rs.round_number AS "roundNumber",
 			       rs.started_at   AS "startedAt",
 			       rs.status       AS "status",
-			       (SELECT count(*)::int FROM rounds r WHERE r.simulation_id = sr.simulation_id) AS "totalRounds"
+			       (SELECT count(*)::int FROM rounds r WHERE r.simulation_id = sr.simulation_id) AS "totalRounds",
+			       (SELECT r.duration_minutes FROM rounds r
+			         WHERE r.simulation_id = sr.simulation_id AND r.round_number = rs.round_number) AS "durationMinutes"
 			FROM sim1_round_state rs
 			JOIN simulation_runs sr ON sr.run_id = rs.run_id
 			WHERE rs.run_id = :runId AND rs.status = 'ACTIVE'

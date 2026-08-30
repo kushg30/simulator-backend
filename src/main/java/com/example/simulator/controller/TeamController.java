@@ -75,7 +75,8 @@ public class TeamController {
         service.assignRole(
             teamId,
             UUID.fromString(req.get("participantId")),
-            req.get("role")
+            req.get("role"),
+            req.get("name")
         );
     }
     
