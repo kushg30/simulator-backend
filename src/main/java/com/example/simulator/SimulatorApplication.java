@@ -3,10 +3,12 @@ package com.example.simulator;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 @SpringBootApplication
+@EnableScheduling // Sim-1 CEO decision-timeout scanner (script 1.7)
 // NOTE: repository packages are listed explicitly. A new repository package MUST be
 // added here or its beans will not be found and the application will fail to start.
 @EnableJpaRepositories(basePackages = {

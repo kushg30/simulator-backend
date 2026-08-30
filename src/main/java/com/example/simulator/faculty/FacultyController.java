@@ -79,6 +79,30 @@ public class FacultyController {
 		return service.pauseAll(simulationId, false, note(body), actor(body));
 	}
 
+	// ------------------------------------------------------------------- news
+
+	/** News interrupt to one team (1.2): full-screen modal, brief timeline pause, no Inbox entry. */
+	@PostMapping("/runs/{runId}/news")
+	public ResponseEntity<?> news(@PathVariable UUID runId,
+			@RequestBody(required = false) Map<String, Object> body) {
+		try {
+			return ResponseEntity.ok(service.postNews(runId,
+					str(body, "headline"), str(body, "body"), intOrNull(body, "pauseSeconds"),
+					str(body, "actor")));
+		} catch (IllegalStateException e) {
+			return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+		}
+	}
+
+	/** News interrupt to every active team of a simulation (whole-class broadcast, 1.2). */
+	@PostMapping("/simulations/{simulationId}/news-all")
+	public List<Map<String, Object>> newsAll(@PathVariable UUID simulationId,
+			@RequestBody(required = false) Map<String, Object> body) {
+		return service.postNewsAll(simulationId,
+				str(body, "headline"), str(body, "body"), intOrNull(body, "pauseSeconds"),
+				str(body, "actor"));
+	}
+
 	// ---------------------------------------------------------------- console
 
 	/** Everything currently in play, for the facilitator console. */
@@ -170,5 +194,17 @@ public class FacultyController {
 
 	private String actor(Map<String, String> body) {
 		return body == null ? null : body.get("actor");
+	}
+
+	private String str(Map<String, Object> body, String key) {
+		Object v = body == null ? null : body.get(key);
+		return v == null ? null : String.valueOf(v);
+	}
+
+	private Integer intOrNull(Map<String, Object> body, String key) {
+		Object v = body == null ? null : body.get(key);
+		if (v == null) return null;
+		if (v instanceof Number n) return n.intValue();
+		try { return Integer.parseInt(String.valueOf(v)); } catch (NumberFormatException e) { return null; }
 	}
 }

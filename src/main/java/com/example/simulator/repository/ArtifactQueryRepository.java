@@ -63,7 +63,12 @@ public interface ArtifactQueryRepository extends org.springframework.data.reposi
 			LEFT JOIN run_round_clock rc ON rc.run_id = sr.run_id AND rc.round_number = rs.round_number
 			CROSS JOIN LATERAL (
 			  SELECT COALESCE(rc.paused_seconds_total, 0)
-			       + COALESCE(EXTRACT(EPOCH FROM (now() - rc.paused_at))::int, 0) AS secs
+			       + COALESCE(EXTRACT(EPOCH FROM (now() - rc.paused_at))::int, 0)
+			       -- a News interrupt (1.2) slides the whole schedule for up to its pause_seconds,
+			       -- ramping while the modal is live and locking in once it elapses.
+			       + COALESCE((SELECT SUM(LEAST(EXTRACT(EPOCH FROM (now() - n.created_at)), n.pause_seconds))::int
+			                   FROM sim1_news n
+			                   WHERE n.run_id = sr.run_id AND n.round_number = rs.round_number), 0) AS secs
 			) pause
 
 			JOIN rounds r ON r.simulation_id = sr.simulation_id AND r.round_number = rs.round_number
@@ -399,5 +404,116 @@ public interface ArtifactQueryRepository extends org.springframework.data.reposi
 		    WHERE team_id = :teamId
 		""", nativeQuery = true)
 		List<Map<String, Object>> getParticipantsByTeam(@Param("teamId") UUID teamId);
-	
+
+	// =========================
+	// Sim 1 — 1.2 News interrupt, 1.7 CEO timeout, 1.10 post-round interstitial
+	// =========================
+
+	/** Records a News broadcast for a run's round (1.2). Slides the schedule for pause_seconds. */
+	@Modifying
+	@Query(value = """
+			INSERT INTO sim1_news (run_id, round_number, headline, body, pause_seconds)
+			VALUES (:runId, :roundNumber, :headline, :body, :pauseSeconds)
+			""", nativeQuery = true)
+	void insertNews(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber,
+			@Param("headline") String headline, @Param("body") String body,
+			@Param("pauseSeconds") int pauseSeconds);
+
+	/** The News interrupt still on screen for a run's active round, if any (1.2). */
+	@Query(value = """
+			SELECT n.headline AS "headline",
+			       n.body     AS "body",
+			       CEIL(n.pause_seconds - EXTRACT(EPOCH FROM (now() - n.created_at)))::int AS "secondsLeft"
+			FROM sim1_news n
+			WHERE n.run_id = :runId AND n.round_number = :roundNumber
+			  AND now() < n.created_at + (n.pause_seconds || ' seconds')::interval
+			ORDER BY n.created_at DESC
+			LIMIT 1
+			""", nativeQuery = true)
+	Map<String, Object> findActiveNews(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
+
+	/** Total paused seconds for a round — faculty pause plus any News slide — matching the schedule. */
+	@Query(value = """
+			SELECT COALESCE(rc.paused_seconds_total, 0)
+			     + COALESCE(EXTRACT(EPOCH FROM (now() - rc.paused_at))::int, 0)
+			     + COALESCE((SELECT SUM(LEAST(EXTRACT(EPOCH FROM (now() - n.created_at)), n.pause_seconds))::int
+			                 FROM sim1_news n
+			                 WHERE n.run_id = :runId AND n.round_number = :roundNumber), 0)
+			FROM (SELECT 1) x
+			LEFT JOIN run_round_clock rc ON rc.run_id = :runId AND rc.round_number = :roundNumber
+			""", nativeQuery = true)
+	Integer findPausedSeconds(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
+
+	/** Whether the CEO's final decision for a round has been recorded (1.7 / 1.10). */
+	@Query(value = """
+			SELECT count(*) FROM decision_events de
+			JOIN decisions d ON d.decision_id = de.decision_id AND d.is_final
+			JOIN artifacts a ON a.artifact_id = d.artifact_id
+			JOIN rounds r ON r.round_id = a.round_id
+			JOIN simulation_runs sr ON sr.simulation_id = r.simulation_id AND sr.run_id = de.run_id
+			WHERE de.run_id = :runId AND r.round_number = :roundNumber
+			""", nativeQuery = true)
+	int countFinalDecision(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
+
+	/** The CEO's submitted framing for a round: chosen action code and its option label (1.10). */
+	@Query(value = """
+			SELECT de.action AS "action",
+			       (SELECT opt->>'label' FROM jsonb_array_elements(d.options) opt
+			         WHERE opt->>'id' = de.action LIMIT 1) AS "label"
+			FROM decision_events de
+			JOIN decisions d ON d.decision_id = de.decision_id AND d.is_final
+			JOIN artifacts a ON a.artifact_id = d.artifact_id
+			JOIN rounds r ON r.round_id = a.round_id
+			JOIN simulation_runs sr ON sr.simulation_id = r.simulation_id AND sr.run_id = de.run_id
+			WHERE de.run_id = :runId AND r.round_number = :roundNumber
+			LIMIT 1
+			""", nativeQuery = true)
+	Map<String, Object> findFinalFraming(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
+
+	/** Every currently-active Sim-1 round, for the timeout scanner (1.7). */
+	@Query(value = """
+			SELECT rs.run_id AS "runId",
+			       rs.round_number AS "roundNumber",
+			       rs.started_at AS "startedAt",
+			       (SELECT r.duration_minutes FROM rounds r
+			          WHERE r.simulation_id = sr.simulation_id AND r.round_number = rs.round_number) AS "durationMinutes"
+			FROM sim1_round_state rs
+			JOIN simulation_runs sr ON sr.run_id = rs.run_id
+			WHERE rs.status = 'ACTIVE' AND sr.status = 'ACTIVE'
+			""", nativeQuery = true)
+	List<Map<String, Object>> findActiveSim1Rounds();
+
+	/** The run's CEO participant id — the party accountable for a missed final decision (1.7). */
+	@Query(value = """
+			SELECT rp.run_participant_id FROM run_participants rp
+			WHERE rp.run_id = :runId AND rp.role = 'CEO' LIMIT 1
+			""", nativeQuery = true)
+	UUID findCeoParticipant(@Param("runId") UUID runId);
+
+	/** Records the auto-advance in the faculty action log as "No decision submitted" (1.7). */
+	@Modifying
+	@Query(value = """
+			INSERT INTO faculty_actions
+			  (action_id, simulation_id, run_id, team_id, round_number, action_type, scope, note, created_by, created_at)
+			SELECT gen_random_uuid(), sr.simulation_id, sr.run_id, sr.team_id, :roundNumber,
+			       'TIMEOUT', 'TEAM', 'No decision submitted', 'system', now()
+			FROM simulation_runs sr WHERE sr.run_id = :runId
+			""", nativeQuery = true)
+	void logTimeout(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
+
+	/** Applies the "No decision submitted" penalty to the CEO's Trust and Execution state (1.7). */
+	@Modifying
+	@Query(value = """
+			INSERT INTO run_construct_state (run_id, run_participant_id, construct_name, value, updated_at)
+			VALUES
+			  (:runId, :participantId, 'stakeholder_trust', 50 + :trustDelta, now()),
+			  (:runId, :participantId, 'execution_quality', 50 + :execDelta, now())
+			ON CONFLICT (run_id, run_participant_id, construct_name)
+			DO UPDATE SET
+			  value = LEAST(100, GREATEST(0, run_construct_state.value + EXCLUDED.value - 50)),
+			  updated_at = now()
+			""", nativeQuery = true)
+	void applyTimeoutPenalty(@Param("runId") UUID runId, @Param("participantId") UUID participantId,
+			@Param("trustDelta") int trustDelta, @Param("execDelta") int execDelta);
+
 }

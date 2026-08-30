@@ -34,4 +34,10 @@ public class ArtifactController {
         return service.getRoundState(runId);
     }
 
+    /** Post-round interstitial (1.10): the CEO's framing for a completed round, or a timeout flag. */
+    @GetMapping("/{runId}/rounds/{roundNumber}/summary")
+    public Map<String, Object> roundSummary(@PathVariable UUID runId, @PathVariable int roundNumber) {
+        return service.getRoundSummary(runId, roundNumber);
+    }
+
 }

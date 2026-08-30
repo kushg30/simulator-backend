@@ -9,6 +9,8 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.example.simulator.repository.ArtifactQueryRepository;
+
 /**
  * Platform-wide faculty controls.
  *
@@ -20,9 +22,11 @@ import org.springframework.transaction.annotation.Transactional;
 public class FacultyService {
 
 	private final FacultyRepository repository;
+	private final ArtifactQueryRepository artifactRepository;
 
-	public FacultyService(FacultyRepository repository) {
+	public FacultyService(FacultyRepository repository, ArtifactQueryRepository artifactRepository) {
 		this.repository = repository;
+		this.artifactRepository = artifactRepository;
 	}
 
 	// ------------------------------------------------------------------ pause
@@ -231,6 +235,49 @@ public class FacultyService {
 
 		return Map.of("runId", runId, "roundNumber", roundNumber, "tier", tier, "scored", scored,
 				"title", finalTitle);
+	}
+
+	// --------------------------------------------------------------------- news
+
+	/**
+	 * News interrupt (1.2): a full-screen external-news modal to every role in a run, which briefly
+	 * pauses the round timeline (default 25s) and leaves no Inbox entry. Scoped to the run's active
+	 * round so it slides only that round's schedule.
+	 */
+	public Map<String, Object> postNews(UUID runId, String headline, String body, Integer pauseSeconds,
+			String actor) {
+		Map<String, Object> active = artifactRepository.findSim1ActiveRound(runId);
+		if (active == null || active.isEmpty()) {
+			throw new IllegalStateException("This run has no active round to broadcast into");
+		}
+		int roundNumber = ((Number) active.get("roundNumber")).intValue();
+		int secs = clampPause(pauseSeconds);
+		String head = headline == null || headline.isBlank() ? "Breaking News" : headline.trim();
+		artifactRepository.insertNews(runId, roundNumber, head, body == null ? "" : body, secs);
+		log(runId, roundNumber, "NEWS", "TEAM", null, null, null, head, actor);
+		return Map.of("runId", runId, "roundNumber", roundNumber, "pauseSeconds", secs, "headline", head);
+	}
+
+	/** Same News interrupt across every active team of a simulation (whole-class broadcast). */
+	public List<Map<String, Object>> postNewsAll(UUID simulationId, String headline, String body,
+			Integer pauseSeconds, String actor) {
+		int secs = clampPause(pauseSeconds);
+		String head = headline == null || headline.isBlank() ? "Breaking News" : headline.trim();
+		List<Map<String, Object>> affected = new ArrayList<>();
+		for (Map<String, Object> round : repository.findActiveSim1Rounds(simulationId)) {
+			UUID runId = (UUID) round.get("runId");
+			int roundNumber = ((Number) round.get("roundNumber")).intValue();
+			artifactRepository.insertNews(runId, roundNumber, head, body == null ? "" : body, secs);
+			log(runId, roundNumber, "NEWS", "ALL", null, null, null, head, actor);
+			affected.add(Map.of("runId", runId, "roundNumber", roundNumber,
+					"teamName", String.valueOf(round.get("teamName"))));
+		}
+		return affected;
+	}
+
+	private int clampPause(Integer pauseSeconds) {
+		int secs = pauseSeconds == null ? 25 : pauseSeconds;
+		return Math.max(10, Math.min(60, secs));
 	}
 
 	// ------------------------------------------------------------------ internal

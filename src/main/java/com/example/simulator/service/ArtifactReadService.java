@@ -61,6 +61,40 @@ public class ArtifactReadService {
 		out.put("startedAt", active.get("startedAt"));
 		out.put("totalRounds", active.get("totalRounds"));
 		out.put("durationMinutes", active.get("durationMinutes")); // for the round countdown timer
+
+		int roundNumber = ((Number) active.get("roundNumber")).intValue();
+		UUID runId2 = runId;
+
+		// Pause-aware countdown (1.2 News + faculty pause): the client subtracts this so the timer
+		// freezes while the schedule is held, instead of ticking through a pause.
+		Integer paused = repository.findPausedSeconds(runId2, roundNumber);
+		out.put("pausedSeconds", paused == null ? 0 : paused);
+
+		// A live News interrupt (1.2) — full-screen to every role, no Inbox entry.
+		Map<String, Object> news = repository.findActiveNews(runId2, roundNumber);
+		out.put("news", news == null || news.isEmpty() ? null : news);
+		return out;
+	}
+
+	/**
+	 * Post-round interstitial data (1.10): the CEO's submitted framing for a completed round, or a
+	 * flag that the round timed out with no decision. Title and discussion prompt are client-side
+	 * constants sourced from the Faculty Debrief Guide (script Section 8).
+	 */
+	@Transactional(readOnly = true)
+	public Map<String, Object> getRoundSummary(UUID runId, int roundNumber) {
+		Map<String, Object> out = new LinkedHashMap<>();
+		out.put("roundNumber", roundNumber);
+		boolean submitted = repository.countFinalDecision(runId, roundNumber) > 0;
+		out.put("submitted", submitted);
+		if (submitted) {
+			Map<String, Object> f = repository.findFinalFraming(runId, roundNumber);
+			Object label = f == null ? null : f.get("label");
+			Object action = f == null ? null : f.get("action");
+			out.put("framing", label != null ? label : action);
+		} else {
+			out.put("framing", "No decision submitted");
+		}
 		return out;
 	}
 

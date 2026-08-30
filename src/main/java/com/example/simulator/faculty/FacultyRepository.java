@@ -81,6 +81,16 @@ public interface FacultyRepository extends org.springframework.data.repository.R
 			nativeQuery = true)
 	void terminateRun(@Param("runId") UUID runId);
 
+	/** Every currently-active Sim-1 round of a simulation — target set for a News-to-all broadcast. */
+	@Query(value = """
+			SELECT rs.run_id AS "runId", rs.round_number AS "roundNumber", sr.team_name AS "teamName"
+			FROM sim1_round_state rs
+			JOIN simulation_runs sr ON sr.run_id = rs.run_id
+			WHERE sr.simulation_id = :simulationId AND rs.status = 'ACTIVE'
+			  AND sr.status <> 'TERMINATED'
+			""", nativeQuery = true)
+	List<Map<String, Object>> findActiveSim1Rounds(@Param("simulationId") UUID simulationId);
+
 	@Query(value = "SELECT simulation_id FROM simulation_runs WHERE run_id = :runId", nativeQuery = true)
 	UUID findSimulationId(@Param("runId") UUID runId);
 
