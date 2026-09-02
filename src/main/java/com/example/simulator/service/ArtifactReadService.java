@@ -33,7 +33,8 @@ public class ArtifactReadService {
 		decisionWriteService.processSilence(runId, participantId);
 
 		List<VisibleArtifactResponse> out = new ArrayList<>(
-				repository.findVisibleArtifacts(runId, participantId).stream().map(this::toResponse).toList());
+				repository.findVisibleArtifacts(runId, participantId).stream()
+						.map(v -> resolveVariant(toResponse(v), runId, participantId)).toList());
 
 		// Artifacts a facilitator pushed into this run appear to every student as a
 		// read-only note in the Inbox, so faculty "insert artifact" actually reaches
@@ -42,6 +43,48 @@ public class ArtifactReadService {
 			out.add(injectedToResponse(inj));
 		}
 		return out;
+	}
+
+	/**
+	 * Adaptive content (script Rounds 2): an artifact whose payload carries {@code variant_on} swaps a
+	 * field (default "body", or "messages") to the entry in {@code variants} keyed by the action taken
+	 * on an earlier decision — e.g. the R2 recap tone by the CEO's R1 framing, the investor follow-up by
+	 * the R1 investor-draft choice, the engineering-fork thread by the R1 tagging choice. {@code cross_role}
+	 * resolves any participant's choice (a CEO framing seen by all); otherwise the viewer's own choice.
+	 * If no triggering decision exists yet, the payload's default field is left untouched.
+	 */
+	@SuppressWarnings("unchecked")
+	private VisibleArtifactResponse resolveVariant(VisibleArtifactResponse r, UUID runId, UUID participantId) {
+		if (r.payload() == null || !r.payload().contains("variant_on")) {
+			return r;
+		}
+		try {
+			Map<String, Object> payload = MAPPER.readValue(r.payload(), Map.class);
+			Object vonObj = payload.get("variant_on");
+			Object variantsObj = payload.get("variants");
+			if (!(vonObj instanceof Map) || !(variantsObj instanceof Map)) {
+				return r;
+			}
+			Map<String, Object> von = (Map<String, Object>) vonObj;
+			Map<String, Object> variants = (Map<String, Object>) variantsObj;
+
+			UUID decisionId = UUID.fromString(String.valueOf(von.get("decision_id")));
+			boolean crossRole = Boolean.TRUE.equals(von.get("cross_role"));
+			String field = von.get("field") == null ? "body" : String.valueOf(von.get("field"));
+
+			String action = repository.findDecisionAction(runId, decisionId, crossRole ? null : participantId);
+			if (action == null || !variants.containsKey(action)) {
+				return r; // no choice made yet (or no matching variant) — keep the default
+			}
+			payload.put(field, variants.get(action));
+			String newPayload = MAPPER.writeValueAsString(payload);
+			return new VisibleArtifactResponse(r.artifactId(), r.artifactType(), newPayload,
+					r.expectedAction(), r.roundNumber(), r.decisionId(), r.decisionType(),
+					r.decisionOptions(), r.allowedRoles(), r.actionState(), r.openAt(), r.expiresAt(),
+					r.chosenAction());
+		} catch (Exception e) {
+			return r; // never let a malformed variant hide an artifact
+		}
 	}
 
 	/**

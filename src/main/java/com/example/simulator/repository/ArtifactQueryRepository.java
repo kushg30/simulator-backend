@@ -97,8 +97,12 @@ public interface ArtifactQueryRepository extends org.springframework.data.reposi
 				          FROM decision_events de_cond
 				          WHERE de_cond.decision_id = ac.depends_on_decision_id
 				            AND de_cond.run_id = sr.run_id
-				            AND de_cond.run_participant_id = :participantId
-				            AND de_cond.action = ac.expected_action
+				            -- cross_role conditions match ANY participant's decision (e.g. the CEO's R1
+				            -- framing gating a CEO-authored artifact shown to a different role); same-role
+				            -- conditions keep the original per-participant match.
+				            AND (ac.cross_role OR de_cond.run_participant_id = :participantId)
+				            -- expected_action may be a comma-list = OR of acceptable trigger actions.
+				            AND de_cond.action = ANY(string_to_array(ac.expected_action, ','))
 				      )
 				)
 
@@ -404,6 +408,21 @@ public interface ArtifactQueryRepository extends org.springframework.data.reposi
 		    WHERE team_id = :teamId
 		""", nativeQuery = true)
 		List<Map<String, Object>> getParticipantsByTeam(@Param("teamId") UUID teamId);
+
+	/**
+	 * The action taken on a decision in a run, for adaptive content variants. When {@code participantId}
+	 * is null the trigger is cross-role (any participant, e.g. the CEO's R1 framing driving the R2 recap
+	 * tone shown to everyone); otherwise it resolves that participant's own choice.
+	 */
+	@Query(value = """
+			SELECT de.action FROM decision_events de
+			WHERE de.decision_id = :decisionId AND de.run_id = :runId
+			  AND (CAST(:participantId AS uuid) IS NULL OR de.run_participant_id = :participantId)
+			ORDER BY de.decided_at
+			LIMIT 1
+			""", nativeQuery = true)
+	String findDecisionAction(@Param("runId") UUID runId, @Param("decisionId") UUID decisionId,
+			@Param("participantId") UUID participantId);
 
 	// =========================
 	// Sim 1 — 1.2 News interrupt, 1.7 CEO timeout, 1.10 post-round interstitial
