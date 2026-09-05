@@ -598,6 +598,10 @@ public interface Sim2Repository extends org.springframework.data.repository.Repo
 			WHERE sr.simulation_id = :simulationId
 			  AND cs.round_number = 0
 			  AND cs.status = 'SCORED'
+			  -- A terminated run drops off the console and out of "finished teams"; exclude it from the
+			  -- debrief dashboard/leaderboard too, so a team terminated after it finalised (e.g. to let it
+			  -- re-run) doesn't linger in the cohort standings.
+			  AND sr.status <> 'TERMINATED'
 			ORDER BY fin.finished_at DESC, cs.construct_name
 			""", nativeQuery = true)
 	List<Map<String, Object>> findCohortFinalScores(@Param("simulationId") UUID simulationId);
