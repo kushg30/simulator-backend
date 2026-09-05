@@ -31,8 +31,8 @@ public class Sim1TimeoutService {
 		this.advancer = advancer;
 	}
 
-	/** Scans active Sim-1 rounds every 20s and auto-advances any past its deadline with no decision. */
-	@Scheduled(fixedDelay = 20_000L, initialDelay = 20_000L)
+	/** Scans active Sim-1 rounds every 10s and advances any whose timer has ended (time-boxed rounds). */
+	@Scheduled(fixedDelay = 10_000L, initialDelay = 15_000L)
 	public void scan() {
 		List<Map<String, Object>> rounds;
 		try {

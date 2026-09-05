@@ -26,8 +26,22 @@ public class Sim2RoundService {
 		this.objectMapper = objectMapper;
 	}
 
-	/** Starts a round's clock. Idempotent: re-starting an active round is a no-op. */
+	/**
+	 * Starts a round's clock. Idempotent: re-starting an already-started round is a no-op.
+	 *
+	 * <p>Teams may not skip ahead: a NEW round only starts once the previous round's timer has fully
+	 * elapsed. Submitting early records the answer but does not unlock the next round — the round is
+	 * time-boxed. (Re-entering an already-started round is always allowed.)
+	 */
 	public Map<String, Object> startRound(UUID runId, int roundNumber) {
+		String existing = repository.findRoundStatus(runId, roundNumber);
+		if (existing == null && roundNumber > 1) {
+			Integer prevRemaining = repository.findRoundRemainingSeconds(runId, roundNumber - 1);
+			if (prevRemaining != null && prevRemaining > 0) {
+				throw new IllegalStateException(
+						"Round " + (roundNumber - 1) + " is still running — the next round starts when its timer ends");
+			}
+		}
 		repository.startRound(runId, roundNumber);
 		String status = repository.findRoundStatus(runId, roundNumber);
 		if (status == null) {

@@ -22,8 +22,12 @@ import com.example.simulator.repository.ArtifactQueryRepository;
 @Service
 public class Sim1RoundAdvancer {
 
-	/** Grace after the round's nominal end before the platform gives up on a decision. */
-	private static final int GRACE_SECONDS = 120;
+	/**
+	 * Rounds are time-boxed: a round advances exactly when its timer ends, with no grace. The CEO can
+	 * submit the framing any time during the round; whatever is (or is not) recorded at the deadline is
+	 * what the round advances with.
+	 */
+	private static final int GRACE_SECONDS = 0;
 	/** "No decision submitted" penalties, mirroring a real non-decision. */
 	private static final int TRUST_DELTA = -8;
 	private static final int EXECUTION_DELTA = -6;
@@ -55,18 +59,19 @@ public class Sim1RoundAdvancer {
 				.plusSeconds(pausedSeconds);
 
 		if (LocalDateTime.now().isBefore(deadline)) {
-			return; // still within time (including grace and any pause)
-		}
-		if (repository.countFinalDecision(runId, roundNumber) > 0) {
-			return; // the CEO did submit — normal advancement already handled this
+			return; // the round timer has not ended yet
 		}
 
-		// Timed out: penalise the CEO's Trust/Execution, log it, and advance the timeline.
-		UUID ceo = repository.findCeoParticipant(runId);
-		if (ceo != null) {
-			repository.applyTimeoutPenalty(runId, ceo, TRUST_DELTA, EXECUTION_DELTA);
+		// The timer has ended — advance regardless of whether the CEO submitted. If no final
+		// decision was recorded, this is a "No decision submitted" outcome: penalise the CEO's Trust
+		// and Execution and log it (a leadership failure mode, not a glitch).
+		if (repository.countFinalDecision(runId, roundNumber) == 0) {
+			UUID ceo = repository.findCeoParticipant(runId);
+			if (ceo != null) {
+				repository.applyTimeoutPenalty(runId, ceo, TRUST_DELTA, EXECUTION_DELTA);
+			}
+			repository.logTimeout(runId, roundNumber);
 		}
-		repository.logTimeout(runId, roundNumber);
 		repository.completeSim1Round(runId, roundNumber);
 		Integer next = repository.findNextRoundNumber(runId, roundNumber);
 		if (next != null) {

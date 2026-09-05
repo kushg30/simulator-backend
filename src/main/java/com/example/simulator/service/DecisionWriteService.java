@@ -98,22 +98,9 @@ public class DecisionWriteService {
         repository.applyConstructDeltas(runId, request.participantId(), request.decisionId(), request.action());
 
         // ── 11. Round advancement ─────────────────────────────────────────────
-        // When the CEO submits a round's final decision, complete that round and
-        // activate the next one (fresh timeline); if it was the last round, the
-        // run is finished. Offset-based simulations only — Sim 2 does not route
-        // its submissions through here.
-        if (Boolean.TRUE.equals(meta.getIsFinal())) {
-            Integer roundNumber = repository.findRoundNumberByArtifact(artifactId);
-            if (roundNumber != null) {
-                repository.completeSim1Round(runId, roundNumber);
-                Integer next = repository.findNextRoundNumber(runId, roundNumber);
-                if (next != null) {
-                    repository.activateSim1Round(runId, next);
-                } else {
-                    repository.completeRun(runId);
-                }
-            }
-        }
+        // Rounds are time-boxed: submitting the CEO's final decision RECORDS the framing but does
+        // NOT advance the round. A round advances strictly when its timer ends (Sim1RoundAdvancer),
+        // so no team can skip ahead by deciding early, and every team moves on the same clock.
     }
 
     // ── Latency band helper ───────────────────────────────────────────────────

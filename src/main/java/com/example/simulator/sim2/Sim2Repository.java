@@ -74,6 +74,21 @@ public interface Sim2Repository extends org.springframework.data.repository.Repo
 			""", nativeQuery = true)
 	String findRoundStatus(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
 
+	/**
+	 * Seconds left on a round's clock (pause-aware), or null if the round was never started. Used to
+	 * block starting the next round before this one's time has fully elapsed — teams may not skip ahead.
+	 */
+	@Query(value = """
+			SELECT GREATEST(0, EXTRACT(EPOCH FROM (
+			    rs.ends_at + (COALESCE(rc.paused_seconds_total, 0)
+			                + COALESCE(EXTRACT(EPOCH FROM (now() - rc.paused_at))::int, 0)
+			                 || ' seconds')::interval - now()))::int)
+			FROM sim2_round_state rs
+			LEFT JOIN run_round_clock rc ON rc.run_id = rs.run_id AND rc.round_number = rs.round_number
+			WHERE rs.run_id = :runId AND rs.round_number = :roundNumber
+			""", nativeQuery = true)
+	Integer findRoundRemainingSeconds(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
+
 	/** True while a facilitator has this round paused — used to block student actions. */
 	@Query(value = """
 			SELECT (rc.paused_at IS NOT NULL)
