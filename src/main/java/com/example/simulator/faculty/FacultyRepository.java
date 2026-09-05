@@ -67,7 +67,14 @@ public interface FacultyRepository extends org.springframework.data.repository.R
 			WHERE sr.simulation_id = :simulationId AND rs.status = 'ACTIVE'
 			  AND sr.status <> 'TERMINATED'
 			UNION ALL
-			SELECT sr.run_id AS "runId", 1 AS "roundNumber", sr.team_name AS "teamName"
+			-- Simulation 1 (and any legacy run) has no sim2_round_state; target its ACTUAL active
+			-- round from sim1_round_state (falling back to round 1). Previously this hardcoded round 1,
+			-- so an all-teams pause during R3 paused the wrong round and did nothing.
+			SELECT sr.run_id AS "runId",
+			       COALESCE((SELECT s1.round_number FROM sim1_round_state s1
+			                  WHERE s1.run_id = sr.run_id AND s1.status = 'ACTIVE'
+			                  ORDER BY s1.round_number DESC LIMIT 1), 1) AS "roundNumber",
+			       sr.team_name AS "teamName"
 			FROM simulation_runs sr
 			WHERE sr.simulation_id = :simulationId
 			  AND sr.status <> 'TERMINATED'

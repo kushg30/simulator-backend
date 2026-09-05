@@ -112,6 +112,7 @@ public class ArtifactReadService {
 		// freezes while the schedule is held, instead of ticking through a pause.
 		Integer paused = repository.findPausedSeconds(runId2, roundNumber);
 		out.put("pausedSeconds", paused == null ? 0 : paused);
+		out.put("paused", Boolean.TRUE.equals(repository.isRoundPaused(runId2, roundNumber)));
 
 		// A live News interrupt (1.2) — full-screen to every role, no Inbox entry.
 		Map<String, Object> news = repository.findActiveNews(runId2, roundNumber);

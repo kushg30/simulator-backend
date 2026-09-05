@@ -258,29 +258,61 @@ public interface ArtifactQueryRepository extends org.springframework.data.reposi
 			@Param("decisionType") String decisionType, @Param("latencyBand") String latencyBand,
 			@Param("decidedAt") LocalDateTime decidedAt);
 
+	/**
+	 * Decisions this participant was genuinely able to take but did not, and whose artifact has now
+	 * expired — i.e. real silences. Mirrors {@link #findVisibleArtifacts} exactly: expiry is measured
+	 * from the artifact's OWN round clock ({@code sim1_round_state.started_at} + pause + News), not the
+	 * run start, and it only counts artifacts that were actually visible to this role (role filter,
+	 * conditional triggers, not bypassed) and decisions this role was allowed to answer. Without this,
+	 * the moment a later round began every one of its decisions looked already-expired and was wrongly
+	 * marked SILENCE.
+	 */
 	@Query(value = """
-			    SELECT
-			      a.artifact_id,
-			      d.decision_id
+			    SELECT a.artifact_id, d.decision_id
 			    FROM simulation_runs sr
-
 			    JOIN run_participants rp
-			      ON rp.run_id = sr.run_id
-			     AND rp.run_participant_id = :participantId
-
-			    JOIN rounds r ON r.simulation_id = sr.simulation_id
+			      ON rp.run_id = sr.run_id AND rp.run_participant_id = :participantId
+			    -- only rounds that have actually started have a clock; PENDING rounds cannot expire yet
+			    JOIN sim1_round_state rs ON rs.run_id = sr.run_id AND rs.status IN ('ACTIVE', 'COMPLETE')
+			    LEFT JOIN run_round_clock rc ON rc.run_id = sr.run_id AND rc.round_number = rs.round_number
+			    CROSS JOIN LATERAL (
+			      SELECT COALESCE(rc.paused_seconds_total, 0)
+			           + COALESCE(EXTRACT(EPOCH FROM (now() - rc.paused_at))::int, 0)
+			           + COALESCE((SELECT SUM(LEAST(EXTRACT(EPOCH FROM (now() - n.created_at)), n.pause_seconds))::int
+			                       FROM sim1_news n
+			                       WHERE n.run_id = sr.run_id AND n.round_number = rs.round_number), 0) AS secs
+			    ) pause
+			    JOIN rounds r ON r.simulation_id = sr.simulation_id AND r.round_number = rs.round_number
 			    JOIN artifacts a ON a.round_id = r.round_id
+			    LEFT JOIN run_artifact_overrides ov ON ov.run_id = sr.run_id AND ov.artifact_id = a.artifact_id
 			    JOIN decisions d ON d.artifact_id = a.artifact_id
-
 			    WHERE sr.run_id = :runId
-
-			      AND d.decision_id IS NOT NULL
-
-			      AND now() >= (sr.started_at + (a.expiry_offset_min || ' minutes')::interval)
-
+			      AND sr.status <> 'TERMINATED'
+			      AND COALESCE(ov.bypassed, false) = false
+			      -- expired against its own round clock (open+delay+pause), matching the visibility query
+			      AND now() >= (rs.started_at
+			                    + ((a.expiry_offset_min + COALESCE(ov.delay_minutes, 0)) || ' minutes')::interval
+			                    + (pause.secs || ' seconds')::interval)
+			      -- the artifact was visible to this role
+			      AND (a.allowed_roles IS NULL OR jsonb_exists(a.allowed_roles, rp.role))
+			      -- and this role was allowed to answer the decision
+			      AND (d.allowed_roles IS NULL OR jsonb_exists(d.allowed_roles, rp.role)
+			           OR jsonb_exists(d.allowed_roles, 'ALL'))
+			      -- conditional artifacts that never triggered for this participant were never shown
 			      AND NOT EXISTS (
-			          SELECT 1
-			          FROM decision_events de
+			          SELECT 1 FROM artifact_conditions ac
+			          WHERE ac.artifact_id = a.artifact_id
+			            AND NOT EXISTS (
+			                SELECT 1 FROM decision_events de_cond
+			                WHERE de_cond.decision_id = ac.depends_on_decision_id
+			                  AND de_cond.run_id = sr.run_id
+			                  AND (ac.cross_role OR de_cond.run_participant_id = :participantId)
+			                  AND de_cond.action = ANY(string_to_array(ac.expected_action, ','))
+			            )
+			      )
+			      -- and the participant has not already answered it
+			      AND NOT EXISTS (
+			          SELECT 1 FROM decision_events de
 			          WHERE de.run_id = sr.run_id
 			            AND de.run_participant_id = rp.run_participant_id
 			            AND de.decision_id = d.decision_id
@@ -462,6 +494,14 @@ public interface ArtifactQueryRepository extends org.springframework.data.reposi
 			LEFT JOIN run_round_clock rc ON rc.run_id = :runId AND rc.round_number = :roundNumber
 			""", nativeQuery = true)
 	Integer findPausedSeconds(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
+
+	/** Whether a facilitator currently has this round paused (for the frozen countdown display). */
+	@Query(value = """
+			SELECT (rc.paused_at IS NOT NULL)
+			FROM run_round_clock rc
+			WHERE rc.run_id = :runId AND rc.round_number = :roundNumber
+			""", nativeQuery = true)
+	Boolean isRoundPaused(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
 
 	/** Whether the CEO's final decision for a round has been recorded (1.7 / 1.10). */
 	@Query(value = """
