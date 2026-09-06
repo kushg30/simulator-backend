@@ -114,10 +114,37 @@ public class ArtifactReadService {
 		out.put("pausedSeconds", paused == null ? 0 : paused);
 		out.put("paused", Boolean.TRUE.equals(repository.isRoundPaused(runId2, roundNumber)));
 
+		// Server-authoritative countdown so every client's timer + alerts agree (no per-browser drift).
+		Integer remaining = repository.findRemainingSeconds(runId2);
+		out.put("remainingSeconds", remaining == null ? null : remaining);
+
+		// Whether the CEO has released the just-completed round's debrief, so non-CEO clients know when
+		// to leave the interstitial and drop into this round together.
+		if (roundNumber > 1) {
+			out.put("prevInterstitialAcked",
+					Boolean.TRUE.equals(repository.isInterstitialAcked(runId2, roundNumber - 1)));
+		} else {
+			out.put("prevInterstitialAcked", true);
+		}
+
 		// A live News interrupt (1.2) — full-screen to every role, no Inbox entry.
 		Map<String, Object> news = repository.findActiveNews(runId2, roundNumber);
 		out.put("news", news == null || news.isEmpty() ? null : news);
 		return out;
+	}
+
+	/**
+	 * The CEO releases a completed round's debrief interstitial. Only the CEO may do this — it is what
+	 * moves the whole team past the between-rounds screen, so the team advances together on the CEO's
+	 * click rather than on an auto-timer.
+	 */
+	@Transactional
+	public void ackInterstitial(UUID runId, int roundNumber, UUID participantId) {
+		String role = repository.findParticipantRole(runId, participantId);
+		if (!"CEO".equals(role)) {
+			throw new IllegalStateException("Only the CEO can continue to the next round");
+		}
+		repository.ackInterstitial(runId, roundNumber);
 	}
 
 	/**

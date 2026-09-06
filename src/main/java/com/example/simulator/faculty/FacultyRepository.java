@@ -150,6 +150,7 @@ public interface FacultyRepository extends org.springframework.data.repository.R
 			           s.total_rounds   AS "totalRounds",
 			           rs.round_number  AS "roundNumber",
 			           rs.status        AS "roundStatus",
+			           sr.status        AS "runStatus",
 			           rs.started_at    AS "startedAt",
 			           COALESCE(rc.paused_seconds_total, 0) AS "pausedSecondsTotal",
 			           (rc.paused_at IS NOT NULL)           AS "paused",
@@ -176,8 +177,12 @@ public interface FacultyRepository extends org.springframework.data.repository.R
 			           sr.simulation_id AS "simulationId",
 			           (SELECT count(*)::int FROM rounds r2
 			             WHERE r2.simulation_id = sr.simulation_id) AS "totalRounds",
-			           COALESCE(s1.round_number, 1)          AS "roundNumber",
-			           'ACTIVE'                              AS "roundStatus",
+			           COALESCE(s1.round_number,
+			                    (SELECT max(c3.round_number) FROM sim1_round_state c3 WHERE c3.run_id = sr.run_id),
+			                    1)                            AS "roundNumber",
+			           -- a completed Sim-1 run must read as COMPLETE so it leaves "Teams in play"
+			           CASE WHEN sr.status = 'COMPLETED' THEN 'COMPLETE' ELSE 'ACTIVE' END AS "roundStatus",
+			           sr.status                             AS "runStatus",
 			           COALESCE(s1.started_at, sr.started_at) AS "startedAt",
 			           COALESCE(rc.paused_seconds_total, 0)  AS "pausedSecondsTotal",
 			           (rc.paused_at IS NOT NULL)            AS "paused",

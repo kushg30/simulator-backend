@@ -495,6 +495,44 @@ public interface ArtifactQueryRepository extends org.springframework.data.reposi
 			""", nativeQuery = true)
 	Integer findPausedSeconds(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
 
+	/**
+	 * Server-authoritative seconds left on the active round's clock (pause- and News-aware). The client
+	 * seeds its countdown from this and ticks locally, so every participant's timer and the 5-min / 1-min
+	 * alerts fire from the same source of truth instead of drifting on each browser's own clock.
+	 */
+	@Query(value = """
+			SELECT GREATEST(0, (
+			    (SELECT r.duration_minutes FROM rounds r
+			       WHERE r.simulation_id = sr.simulation_id AND r.round_number = rs.round_number) * 60
+			    + COALESCE(rc.paused_seconds_total, 0)
+			    + COALESCE(EXTRACT(EPOCH FROM (now() - rc.paused_at))::int, 0)
+			    + COALESCE((SELECT SUM(LEAST(EXTRACT(EPOCH FROM (now() - n.created_at)), n.pause_seconds))::int
+			                FROM sim1_news n WHERE n.run_id = rs.run_id AND n.round_number = rs.round_number), 0)
+			    - EXTRACT(EPOCH FROM (now() - rs.started_at))
+			)::int)
+			FROM sim1_round_state rs
+			JOIN simulation_runs sr ON sr.run_id = rs.run_id
+			LEFT JOIN run_round_clock rc ON rc.run_id = rs.run_id AND rc.round_number = rs.round_number
+			WHERE rs.run_id = :runId AND rs.status = 'ACTIVE'
+			LIMIT 1
+			""", nativeQuery = true)
+	Integer findRemainingSeconds(@Param("runId") UUID runId);
+
+	/** Whether the CEO has acknowledged a completed round's debrief interstitial (CEO-gated advance). */
+	@Query(value = """
+			SELECT interstitial_acked FROM sim1_round_state
+			WHERE run_id = :runId AND round_number = :roundNumber
+			""", nativeQuery = true)
+	Boolean isInterstitialAcked(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
+
+	/** The CEO marks a completed round's debrief acknowledged, releasing the team into the next round. */
+	@Modifying
+	@Query(value = """
+			UPDATE sim1_round_state SET interstitial_acked = true
+			WHERE run_id = :runId AND round_number = :roundNumber
+			""", nativeQuery = true)
+	void ackInterstitial(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
+
 	/** Whether a facilitator currently has this round paused (for the frozen countdown display). */
 	@Query(value = """
 			SELECT (rc.paused_at IS NOT NULL)

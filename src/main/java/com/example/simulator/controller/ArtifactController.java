@@ -2,8 +2,11 @@ package com.example.simulator.controller;
 
 import java.util.*;
 
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -38,6 +41,18 @@ public class ArtifactController {
     @GetMapping("/{runId}/rounds/{roundNumber}/summary")
     public Map<String, Object> roundSummary(@PathVariable UUID runId, @PathVariable int roundNumber) {
         return service.getRoundSummary(runId, roundNumber);
+    }
+
+    /** CEO releases a completed round's debrief interstitial so the team advances together. */
+    @PostMapping("/{runId}/rounds/{roundNumber}/ack-interstitial")
+    public ResponseEntity<?> ackInterstitial(@PathVariable UUID runId, @PathVariable int roundNumber,
+            @RequestBody Map<String, String> body) {
+        try {
+            service.ackInterstitial(runId, roundNumber, UUID.fromString(body.get("participantId")));
+            return ResponseEntity.ok(Map.of("acked", true));
+        } catch (IllegalStateException | IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
     }
 
 }
