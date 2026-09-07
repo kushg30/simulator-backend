@@ -456,6 +456,18 @@ public interface ArtifactQueryRepository extends org.springframework.data.reposi
 	String findDecisionAction(@Param("runId") UUID runId, @Param("decisionId") UUID decisionId,
 			@Param("participantId") UUID participantId);
 
+	/**
+	 * Every action recorded on a decision in a run, across all participants. Used for the
+	 * conflict-resolution branches (spec 1.5): Investor Draft (CFO & Product) and Internal Tagging
+	 * (Engineering & Operations) can carry two different answers — downstream branching uses the most
+	 * cautious of them.
+	 */
+	@Query(value = """
+			SELECT de.action FROM decision_events de
+			WHERE de.decision_id = :decisionId AND de.run_id = :runId
+			""", nativeQuery = true)
+	List<String> findActionsForDecision(@Param("runId") UUID runId, @Param("decisionId") UUID decisionId);
+
 	// =========================
 	// Sim 1 — 1.2 News interrupt, 1.7 CEO timeout, 1.10 post-round interstitial
 	// =========================

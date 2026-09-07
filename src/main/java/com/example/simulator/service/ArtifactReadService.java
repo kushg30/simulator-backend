@@ -72,9 +72,28 @@ public class ArtifactReadService {
 			boolean crossRole = Boolean.TRUE.equals(von.get("cross_role"));
 			String field = von.get("field") == null ? "body" : String.valueOf(von.get("field"));
 
-			String action = repository.findDecisionAction(runId, decisionId, crossRole ? null : participantId);
+			String action;
+			Object cautiousObj = von.get("cautious_order");
+			if (cautiousObj instanceof List) {
+				// Conflict resolution (spec 1.5): two roles answered the same decision — branch on the
+				// MOST CAUTIOUS answer. cautious_order lists actions most-cautious first; pick the lowest
+				// index present among the run's recorded actions for this decision.
+				List<?> order = (List<?>) cautiousObj;
+				List<String> actions = repository.findActionsForDecision(runId, decisionId);
+				action = null;
+				int best = Integer.MAX_VALUE;
+				for (String a : actions) {
+					int idx = order.indexOf(a);
+					if (idx >= 0 && idx < best) {
+						best = idx;
+						action = a;
+					}
+				}
+			} else {
+				action = repository.findDecisionAction(runId, decisionId, crossRole ? null : participantId);
+			}
 			if (action == null || !variants.containsKey(action)) {
-				return r; // no choice made yet (or no matching variant) — keep the default
+				return r; // no qualifying choice yet — keep the default
 			}
 			payload.put(field, variants.get(action));
 			String newPayload = MAPPER.writeValueAsString(payload);
