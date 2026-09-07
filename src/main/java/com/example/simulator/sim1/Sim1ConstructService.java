@@ -183,19 +183,35 @@ public class Sim1ConstructService {
             }
             patterns.merge((String) team.get("dominantPattern"), 1, Integer::sum);
         }
-        out.add(pct(normalized, n) + "% of teams normalized weak signals before escalation became "
+        // Script 9: at single-digit cohort sizes report RAW COUNTS ("1 of 3 teams"), never percentages —
+        // a percentage implies statistical weight this sample size does not carry. Percentages only
+        // appear once the cohort reaches the minimum n below.
+        out.add(share(normalized, n) + " normalized weak signals before escalation became "
                 + "legitimate (low Early Signal Legitimization).");
-        out.add(pct(narrowed, n) + "% of teams narrowed their option space to High by the final round.");
+        out.add(share(narrowed, n) + " narrowed their option space to High by the final round.");
         if (legitimized > 0) {
-            out.add(pct(legitimized, n) + "% of teams legitimized the signal early and kept options open.");
+            out.add(share(legitimized, n) + " legitimized the signal early and kept options open.");
         }
         if (foreclosed > 0) {
-            out.add(pct(foreclosed, n) + "% crossed the Round-1 silence threshold that forecloses escalation.");
+            out.add(share(foreclosed, n) + " crossed the Round-1 silence threshold that forecloses escalation.");
         }
         patterns.entrySet().stream().max(Map.Entry.comparingByValue()).ifPresent(e ->
                 out.add("The most common leadership pattern was \"" + e.getKey() + "\" (" + e.getValue()
                         + " of " + n + " teams)."));
         return out;
+    }
+
+    /** Minimum cohort size before a percentage carries any statistical weight (script 9). */
+    private static final int MIN_N_FOR_PERCENT = 10;
+
+    /**
+     * "2 of 3 teams" for a small cohort, "40% of teams" once the cohort is large enough to justify it.
+     */
+    private String share(int x, int n) {
+        if (n < MIN_N_FOR_PERCENT) {
+            return x + " of " + n + (n == 1 ? " team" : " teams");
+        }
+        return pct(x, n) + "% of teams";
     }
 
     private int pct(int x, int n) {

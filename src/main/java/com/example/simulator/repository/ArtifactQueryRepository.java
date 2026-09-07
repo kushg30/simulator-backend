@@ -599,6 +599,49 @@ public interface ArtifactQueryRepository extends org.springframework.data.reposi
 			""", nativeQuery = true)
 	UUID findCeoParticipant(@Param("runId") UUID runId);
 
+	/**
+	 * Applies the "No Response" cost for a decision that expired unanswered (script 1.7). The penalty is
+	 * derived from that decision's OWN options, so it only touches the hidden variables that artifact
+	 * actually feeds — never a flat penalty applied everywhere. For each variable it takes the worst
+	 * movement available on that decision, clamped so a No Response can never help: Trust and Execution
+	 * can only fall, Organizational Risk and Ethical Exposure can only rise. A variable the artifact does
+	 * not feed (all options zero) is left untouched.
+	 */
+	@Modifying
+	@Query(value = """
+			INSERT INTO run_construct_state (run_id, run_participant_id, construct_name, value, updated_at)
+			SELECT :runId, :participantId, 'stakeholder_trust',
+			       50 + LEAST(0, COALESCE(MIN(o.trust_delta), 0)), now()
+			  FROM decision_options o WHERE o.decision_id = :decisionId
+			UNION ALL
+			SELECT :runId, :participantId, 'organizational_risk',
+			       50 + GREATEST(0, COALESCE(MAX(o.risk_delta), 0)), now()
+			  FROM decision_options o WHERE o.decision_id = :decisionId
+			UNION ALL
+			SELECT :runId, :participantId, 'ethical_exposure',
+			       50 + GREATEST(0, COALESCE(MAX(o.ethics_delta), 0)), now()
+			  FROM decision_options o WHERE o.decision_id = :decisionId
+			UNION ALL
+			SELECT :runId, :participantId, 'execution_quality',
+			       50 + LEAST(0, COALESCE(MIN(o.execution_delta), 0)), now()
+			  FROM decision_options o WHERE o.decision_id = :decisionId
+			ON CONFLICT (run_id, run_participant_id, construct_name)
+			DO UPDATE SET
+			  value = LEAST(100, GREATEST(0, run_construct_state.value + EXCLUDED.value - 50)),
+			  updated_at = now()
+			""", nativeQuery = true)
+	void applyNoResponsePenalty(@Param("runId") UUID runId, @Param("participantId") UUID participantId,
+			@Param("decisionId") UUID decisionId);
+
+	/** Team-level Set-A averages for the end-of-simulation qualitative reveal (script 7). */
+	@Query(value = """
+			SELECT construct_name AS "construct", AVG(value) AS "value"
+			FROM run_construct_state
+			WHERE run_id = :runId
+			GROUP BY construct_name
+			""", nativeQuery = true)
+	List<Map<String, Object>> findTeamConstructAverages(@Param("runId") UUID runId);
+
 	/** Records the auto-advance in the faculty action log as "No decision submitted" (1.7). */
 	@Modifying
 	@Query(value = """

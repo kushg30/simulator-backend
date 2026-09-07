@@ -127,6 +127,13 @@ public class DecisionWriteService {
         }
     }
     
+    /**
+     * Logs the "No Response" outcome for every decision this participant could have taken but did not,
+     * once its artifact has expired (script 1.7). The outcome is stored as the distinct action SILENCE —
+     * deliberately NOT reusing any real option code (the Board Message genuinely offers "Do not respond")
+     * — and is surfaced to users as "No Response". It is not a blank: it carries a cost on whichever
+     * hidden variables that specific artifact feeds.
+     */
     public void processSilence(UUID runId, UUID participantId) {
         var expired = repository.findExpiredUnansweredDecisions(runId, participantId);
 
@@ -135,7 +142,7 @@ public class DecisionWriteService {
         	UUID decisionId = UUID.fromString(row[1].toString());
 
             String latencyBand = computeLatencyBand(runId, artifactId, LocalDateTime.now());
-            
+
             repository.insertDecisionEvent(
                 runId,
                 participantId,
@@ -146,6 +153,9 @@ public class DecisionWriteService {
                 latencyBand,
                 LocalDateTime.now()
             );
+
+            // Indecision is a decision: charge it against the variables this artifact actually feeds.
+            repository.applyNoResponsePenalty(runId, participantId, decisionId);
         }
     }
 }

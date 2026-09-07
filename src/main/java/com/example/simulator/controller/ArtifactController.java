@@ -43,6 +43,12 @@ public class ArtifactController {
         return service.getRoundSummary(runId, roundNumber);
     }
 
+    /** End-of-simulation qualitative reveal for participants: four variables as High/Medium/Low (7). */
+    @GetMapping("/{runId}/reveal")
+    public Map<String, Object> reveal(@PathVariable UUID runId) {
+        return service.getReveal(runId);
+    }
+
     /** CEO releases a completed round's debrief interstitial so the team advances together. */
     @PostMapping("/{runId}/rounds/{roundNumber}/ack-interstitial")
     public ResponseEntity<?> ackInterstitial(@PathVariable UUID runId, @PathVariable int roundNumber,

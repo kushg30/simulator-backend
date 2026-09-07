@@ -153,6 +153,44 @@ public class ArtifactReadService {
 	}
 
 	/**
+	 * End-of-simulation qualitative reveal (script 7): the four hidden variables as High / Medium / Low
+	 * for the team — never numbers, never a ranking against other teams. Banding matches the facilitator
+	 * console exactly (>=67 High, >=34 Medium, else Low) so the room and the console agree.
+	 */
+	@Transactional(readOnly = true)
+	public Map<String, Object> getReveal(UUID runId) {
+		Map<String, Integer> values = new LinkedHashMap<>();
+		for (Map<String, Object> row : repository.findTeamConstructAverages(runId)) {
+			Object c = row.get("construct");
+			Object v = row.get("value");
+			if (c != null && v instanceof Number n) {
+				values.put(String.valueOf(c), (int) Math.round(n.doubleValue()));
+			}
+		}
+		// Fixed order and labels as listed in script 1.9 / 7.
+		String[][] order = {
+				{ "stakeholder_trust", "Stakeholder Trust" },
+				{ "organizational_risk", "Organizational Risk" },
+				{ "execution_quality", "Execution Quality" },
+				{ "ethical_exposure", "Ethical Exposure" },
+		};
+		List<Map<String, Object>> out = new ArrayList<>();
+		for (String[] pair : order) {
+			Integer v = values.get(pair[0]);
+			Map<String, Object> item = new LinkedHashMap<>();
+			item.put("construct", pair[0]);
+			item.put("label", pair[1]);
+			// A team that never moved a variable sits at the 50 baseline.
+			int value = v == null ? 50 : v;
+			item.put("band", value >= 67 ? "High" : value >= 34 ? "Medium" : "Low");
+			out.add(item);
+		}
+		Map<String, Object> result = new LinkedHashMap<>();
+		result.put("reveal", out);
+		return result;
+	}
+
+	/**
 	 * The CEO releases a completed round's debrief interstitial. Only the CEO may do this — it is what
 	 * moves the whole team past the between-rounds screen, so the team advances together on the CEO's
 	 * click rather than on an auto-timer.
