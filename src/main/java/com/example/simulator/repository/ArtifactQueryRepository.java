@@ -189,6 +189,7 @@ public interface ArtifactQueryRepository extends org.springframework.data.reposi
 	@Query(value = """
 			SELECT rs.round_number AS "roundNumber",
 			       rs.started_at   AS "startedAt",
+			       sr.status       AS "runStatus",
 			       (SELECT count(*)::int FROM rounds r2 WHERE r2.simulation_id = sr.simulation_id) AS "totalRounds",
 			       rd.duration_minutes AS "durationMinutes",
 			       pause.secs AS "pausedSeconds",
@@ -410,13 +411,27 @@ public interface ArtifactQueryRepository extends org.springframework.data.reposi
 	int countValidOption(@Param("decisionId") UUID decisionId, @Param("action") String action);
 
 	@Query(value = """
-			SELECT sr.started_at + (a.open_offset_min || ' minutes')::interval AS openAt,
-			       sr.started_at + (a.expiry_offset_min || ' minutes')::interval AS expiresAt
+			-- Offsets are relative to the OWN round of the artifact, not to the run. Measuring from run
+			-- start made every round-2-and-later artifact look long expired at the moment it opened, so
+			-- each of those decisions banded as slow no matter how fast the participant answered.
+			-- Pause time is added the same way the visibility query adds it, so a facilitator pause does
+			-- not cost participants their latency band.
+			SELECT (rs.started_at + ((a.open_offset_min + COALESCE(ov.delay_minutes, 0)) || ' minutes')::interval
+			                      + (pause.secs || ' seconds')::interval) AS openAt,
+			       (rs.started_at + ((a.expiry_offset_min + COALESCE(ov.delay_minutes, 0)) || ' minutes')::interval
+			                      + (pause.secs || ' seconds')::interval) AS expiresAt
 			FROM artifacts a
 			JOIN rounds r ON r.round_id = a.round_id
-			JOIN simulation_runs sr ON sr.simulation_id = r.simulation_id
+			JOIN sim1_round_state rs ON rs.run_id = :runId AND rs.round_number = r.round_number
+			LEFT JOIN run_artifact_overrides ov ON ov.run_id = :runId AND ov.artifact_id = a.artifact_id
+			CROSS JOIN LATERAL (
+			  SELECT COALESCE((SELECT rc.paused_seconds_total FROM run_round_clock rc
+			                    WHERE rc.run_id = :runId AND rc.round_number = r.round_number), 0)
+			       + COALESCE((SELECT SUM(LEAST(EXTRACT(EPOCH FROM (now() - nn.created_at)), nn.pause_seconds))::int
+			                   FROM sim1_news nn
+			                   WHERE nn.run_id = :runId AND nn.round_number = r.round_number), 0) AS secs
+			) pause
 			WHERE a.artifact_id = :artifactId
-			  AND sr.run_id = :runId
 			""", nativeQuery = true)
 	Object[] findArtifactWindow(@Param("artifactId") UUID artifactId, @Param("runId") UUID runId);
 
@@ -610,6 +625,25 @@ public interface ArtifactQueryRepository extends org.springframework.data.reposi
 			WHERE rc.run_id = :runId AND rc.round_number = :roundNumber
 			""", nativeQuery = true)
 	Boolean isRoundPaused(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
+
+	/**
+	 * Whether the run's CURRENTLY ACTIVE round is paused. A facilitator pause has to actually stop play,
+	 * not merely freeze the display: previously the clock froze while participants carried on answering,
+	 * which defeats the point of calling a pause in the room.
+	 */
+	@Query(value = """
+			SELECT COALESCE((rc.paused_at IS NOT NULL), false)
+			FROM sim1_round_state rs
+			LEFT JOIN run_round_clock rc
+			       ON rc.run_id = rs.run_id AND rc.round_number = rs.round_number
+			WHERE rs.run_id = :runId AND rs.status = 'ACTIVE'
+			LIMIT 1
+			""", nativeQuery = true)
+	Boolean isActiveRoundPaused(@Param("runId") UUID runId);
+
+	/** A run's lifecycle status, used to stop writes into a terminated run and to tell its clients. */
+	@Query(value = "SELECT sr.status FROM simulation_runs sr WHERE sr.run_id = :runId", nativeQuery = true)
+	String findRunStatus(@Param("runId") UUID runId);
 
 	/** Whether the CEO's final decision for a round has been recorded (1.7 / 1.10). */
 	@Query(value = """

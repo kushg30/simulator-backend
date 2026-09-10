@@ -33,6 +33,16 @@ public class DecisionWriteService {
 
     public void recordDecision(UUID runId, RecordDecisionRequest request) {
 
+        // ── 0. The run must be live, and not paused ───────────────────────────
+        // Both are facilitator states, so enforcement belongs on the server: hiding the buttons in the
+        // browser is a courtesy, this is what actually stops the write.
+        if ("TERMINATED".equals(repository.findRunStatus(runId))) {
+            throw new IllegalStateException("This session has been ended by the facilitator");
+        }
+        if (Boolean.TRUE.equals(repository.isActiveRoundPaused(runId))) {
+            throw new IllegalStateException("The facilitator has paused this round");
+        }
+
         // ── 1. Participant validation ─────────────────────────────────────────
         String role = repository.findParticipantRole(runId, request.participantId());
         if (role == null) {

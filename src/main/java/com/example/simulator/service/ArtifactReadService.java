@@ -116,9 +116,20 @@ public class ArtifactReadService {
 		Map<String, Object> row = repository.findSim1RoundScreenState(runId);
 		Map<String, Object> out = new LinkedHashMap<>();
 		if (row == null || row.isEmpty()) {
+			// No active round: either the simulation finished, or the facilitator ended it. The two
+			// need different screens — one is a reveal, the other is "stop playing".
+			out.put("terminated", "TERMINATED".equals(repository.findRunStatus(runId)));
 			out.put("completed", true);
 			return out;
 		}
+		// Terminating leaves the round row ACTIVE, so this is the flag that tells every client in the
+		// room to stop. Without it a terminated team simply carried on playing a dead run.
+		if ("TERMINATED".equals(row.get("runStatus"))) {
+			out.put("terminated", true);
+			out.put("completed", false);
+			return out;
+		}
+		out.put("terminated", false);
 		out.put("completed", false);
 		out.put("roundNumber", row.get("roundNumber"));
 		out.put("startedAt", row.get("startedAt"));
