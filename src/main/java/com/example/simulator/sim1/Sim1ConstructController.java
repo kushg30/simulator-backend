@@ -19,9 +19,23 @@ import org.springframework.web.bind.annotation.RestController;
 public class Sim1ConstructController {
 
     private final Sim1ConstructService service;
+    private final Sim1ReportService reports;
 
-    public Sim1ConstructController(Sim1ConstructService service) {
+    public Sim1ConstructController(Sim1ConstructService service, Sim1ReportService reports) {
         this.service = service;
+        this.reports = reports;
+    }
+
+    /** Cohort ranking per construct — every team named, so this stays on the faculty side. */
+    @GetMapping("/simulations/{simulationId}/leaderboard")
+    public Map<String, Object> leaderboard(@PathVariable UUID simulationId) {
+        return reports.leaderboard(simulationId);
+    }
+
+    /** The full team report for one run, generated on demand from the console. */
+    @GetMapping("/runs/{runId}/report")
+    public Map<String, Object> report(@PathVariable UUID runId) {
+        return reports.report(runId);
     }
 
     /** The five constructs per participant and for the team (values + Low/Med/High bands). */

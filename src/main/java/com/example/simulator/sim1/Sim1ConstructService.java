@@ -36,6 +36,13 @@ public class Sim1ConstructService {
     static final String OSC = "OPTION_SPACE_CONTRACTION";
     static final List<String> CONSTRUCTS = List.of(ESL, SIL, FRM, AUTH, OSC);
 
+    /**
+     * The four constructs where a HIGH value is the adverse direction. Early Signal Legitimization is
+     * the only one where high is good. Ranking and colour both depend on this, so it lives here next to
+     * the scoring rather than being restated in each consumer.
+     */
+    static final Set<String> ADVERSE = Set.of(SIL, FRM, AUTH, OSC);
+
     // Constructs start neutral and are moved by decisions; ESL higher is good, the rest higher is adverse.
     private static final int BASELINE = 50;
 
@@ -222,9 +229,15 @@ public class Sim1ConstructService {
         return Math.max(0, Math.min(100, v));
     }
 
-    /** Numeric value plus its Low/Medium/High band — students only ever see the band. */
+    /**
+     * Numeric value plus its Low/Medium/High band — students only ever see the band.
+     *
+     * <p>Thresholds are 67 / 34, matching the Set-A reveal, the faculty console legend and the team
+     * report. They previously read 70 / 40 here, so the same score could be called Medium in one view
+     * and High in another.
+     */
     private Map<String, Object> band(int v) {
-        String b = v >= 70 ? "High" : v >= 40 ? "Medium" : "Low";
+        String b = v >= 67 ? "High" : v >= 34 ? "Medium" : "Low";
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("value", v);
         m.put("band", b);

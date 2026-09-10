@@ -18,9 +18,12 @@ import com.example.simulator.service.ArtifactReadService;
 public class ArtifactController {
 
     private final ArtifactReadService service;
+    private final com.example.simulator.sim1.Sim1ReportService reports;
 
-    public ArtifactController(ArtifactReadService service) {
+    public ArtifactController(ArtifactReadService service,
+            com.example.simulator.sim1.Sim1ReportService reports) {
         this.service = service;
+        this.reports = reports;
     }
 
     @GetMapping("/{runId}/participants/{participantId}/artifacts")
@@ -47,6 +50,22 @@ public class ArtifactController {
     @GetMapping("/{runId}/reveal")
     public Map<String, Object> reveal(@PathVariable UUID runId) {
         return service.getReveal(runId);
+    }
+
+    /**
+     * The team's own report, for download from the results screen. Released only once the simulation
+     * has finished — during play it would hand a team its construct profile mid-round, which is the one
+     * thing the design keeps hidden. It carries the team's rank within the cohort but never any other
+     * team's name, so it is safe outside the facilitator token.
+     */
+    @GetMapping("/{runId}/report")
+    public ResponseEntity<?> teamReport(@PathVariable UUID runId) {
+        Map<String, Object> state = service.getRoundState(runId);
+        if (!Boolean.TRUE.equals(state.get("completed"))) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "Your report is available once the simulation is complete."));
+        }
+        return ResponseEntity.ok(reports.report(runId));
     }
 
     /** CEO releases a completed round's debrief interstitial so the team advances together. */
