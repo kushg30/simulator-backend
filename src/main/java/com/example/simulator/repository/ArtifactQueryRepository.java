@@ -88,6 +88,13 @@ public interface ArtifactQueryRepository extends org.springframework.data.reposi
 			AND sr.status <> 'TERMINATED'
 			AND COALESCE(ov.bypassed, false) = false
 
+			-- Never hand a client an artifact that has not opened yet. The UI already hides future
+			-- items, but without this the whole round (inner voices, the round-ending options) sits in
+			-- the network response from T+0 and the timed feed can be read ahead in devtools.
+			AND now() >= (rs.started_at
+			              + ((a.open_offset_min + COALESCE(ov.delay_minutes, 0)) || ' minutes')::interval
+			              + (pause.secs || ' seconds')::interval)
+
 			AND NOT EXISTS (
 				    SELECT 1
 				    FROM artifact_conditions ac
