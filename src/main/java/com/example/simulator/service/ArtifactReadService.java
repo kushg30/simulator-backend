@@ -112,43 +112,41 @@ public class ArtifactReadService {
 	 */
 	@Transactional(readOnly = true)
 	public Map<String, Object> getRoundState(UUID runId) {
-		Map<String, Object> active = repository.findSim1ActiveRound(runId);
+		// One query for the whole round screen — this endpoint is polled by every client every 3s.
+		Map<String, Object> row = repository.findSim1RoundScreenState(runId);
 		Map<String, Object> out = new LinkedHashMap<>();
-		if (active == null || active.isEmpty()) {
+		if (row == null || row.isEmpty()) {
 			out.put("completed", true);
 			return out;
 		}
 		out.put("completed", false);
-		out.put("roundNumber", active.get("roundNumber"));
-		out.put("startedAt", active.get("startedAt"));
-		out.put("totalRounds", active.get("totalRounds"));
-		out.put("durationMinutes", active.get("durationMinutes")); // for the round countdown timer
+		out.put("roundNumber", row.get("roundNumber"));
+		out.put("startedAt", row.get("startedAt"));
+		out.put("totalRounds", row.get("totalRounds"));
+		out.put("durationMinutes", row.get("durationMinutes")); // for the round countdown timer
 
-		int roundNumber = ((Number) active.get("roundNumber")).intValue();
-		UUID runId2 = runId;
-
-		// Pause-aware countdown (1.2 News + faculty pause): the client subtracts this so the timer
-		// freezes while the schedule is held, instead of ticking through a pause.
-		Integer paused = repository.findPausedSeconds(runId2, roundNumber);
+		Object paused = row.get("pausedSeconds");
 		out.put("pausedSeconds", paused == null ? 0 : paused);
-		out.put("paused", Boolean.TRUE.equals(repository.isRoundPaused(runId2, roundNumber)));
+		out.put("paused", Boolean.TRUE.equals(row.get("paused")));
 
 		// Server-authoritative countdown so every client's timer + alerts agree (no per-browser drift).
-		Integer remaining = repository.findRemainingSeconds(runId2);
-		out.put("remainingSeconds", remaining == null ? null : remaining);
+		out.put("remainingSeconds", row.get("remainingSeconds"));
 
 		// Whether the CEO has released the just-completed round's debrief, so non-CEO clients know when
 		// to leave the interstitial and drop into this round together.
-		if (roundNumber > 1) {
-			out.put("prevInterstitialAcked",
-					Boolean.TRUE.equals(repository.isInterstitialAcked(runId2, roundNumber - 1)));
-		} else {
-			out.put("prevInterstitialAcked", true);
-		}
+		out.put("prevInterstitialAcked", Boolean.TRUE.equals(row.get("prevInterstitialAcked")));
 
 		// A live News interrupt (1.2) — full-screen to every role, no Inbox entry.
-		Map<String, Object> news = repository.findActiveNews(runId2, roundNumber);
-		out.put("news", news == null || news.isEmpty() ? null : news);
+		Object headline = row.get("newsHeadline");
+		if (headline == null) {
+			out.put("news", null);
+		} else {
+			Map<String, Object> news = new LinkedHashMap<>();
+			news.put("headline", headline);
+			news.put("body", row.get("newsBody"));
+			news.put("secondsLeft", row.get("newsSecondsLeft"));
+			out.put("news", news);
+		}
 		return out;
 	}
 

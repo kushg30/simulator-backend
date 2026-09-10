@@ -180,6 +180,53 @@ public interface ArtifactQueryRepository extends org.springframework.data.reposi
 			""", nativeQuery = true)
 	Map<String, Object> findSim1ActiveRound(@Param("runId") UUID runId);
 
+	/**
+	 * Everything the round screen needs, in ONE round trip. Every client polls this every 3 seconds, so
+	 * at cohort scale it is the hottest endpoint on the platform — it previously issued six separate
+	 * queries (active round, paused seconds, paused flag, remaining seconds, live News, interstitial ack)
+	 * and that fan-out was the main source of queueing under load.
+	 */
+	@Query(value = """
+			SELECT rs.round_number AS "roundNumber",
+			       rs.started_at   AS "startedAt",
+			       (SELECT count(*)::int FROM rounds r2 WHERE r2.simulation_id = sr.simulation_id) AS "totalRounds",
+			       rd.duration_minutes AS "durationMinutes",
+			       pause.secs AS "pausedSeconds",
+			       (rc.paused_at IS NOT NULL) AS "paused",
+			       GREATEST(0, (rd.duration_minutes * 60 + pause.secs
+			                    - EXTRACT(EPOCH FROM (now() - rs.started_at)))::int) AS "remainingSeconds",
+			       COALESCE(prev.interstitial_acked, true) AS "prevInterstitialAcked",
+			       n.headline AS "newsHeadline",
+			       n.body     AS "newsBody",
+			       CASE WHEN n.created_at IS NULL THEN NULL
+			            ELSE CEIL(n.pause_seconds - EXTRACT(EPOCH FROM (now() - n.created_at)))::int
+			       END AS "newsSecondsLeft"
+			FROM sim1_round_state rs
+			JOIN simulation_runs sr ON sr.run_id = rs.run_id
+			JOIN rounds rd ON rd.simulation_id = sr.simulation_id AND rd.round_number = rs.round_number
+			LEFT JOIN run_round_clock rc ON rc.run_id = rs.run_id AND rc.round_number = rs.round_number
+			CROSS JOIN LATERAL (
+			  SELECT COALESCE(rc.paused_seconds_total, 0)
+			       + COALESCE(EXTRACT(EPOCH FROM (now() - rc.paused_at))::int, 0)
+			       + COALESCE((SELECT SUM(LEAST(EXTRACT(EPOCH FROM (now() - nn.created_at)), nn.pause_seconds))::int
+			                   FROM sim1_news nn
+			                   WHERE nn.run_id = rs.run_id AND nn.round_number = rs.round_number), 0) AS secs
+			) pause
+			LEFT JOIN sim1_round_state prev
+			       ON prev.run_id = rs.run_id AND prev.round_number = rs.round_number - 1
+			LEFT JOIN LATERAL (
+			  SELECT nx.headline, nx.body, nx.created_at, nx.pause_seconds
+			  FROM sim1_news nx
+			  WHERE nx.run_id = rs.run_id AND nx.round_number = rs.round_number
+			    AND now() < nx.created_at + (nx.pause_seconds || ' seconds')::interval
+			  ORDER BY nx.created_at DESC
+			  LIMIT 1
+			) n ON true
+			WHERE rs.run_id = :runId AND rs.status = 'ACTIVE'
+			LIMIT 1
+			""", nativeQuery = true)
+	Map<String, Object> findSim1RoundScreenState(@Param("runId") UUID runId);
+
 	// =========================
 	// READ: facilitator-injected artifacts for this run (surfaced to students)
 	// =========================
