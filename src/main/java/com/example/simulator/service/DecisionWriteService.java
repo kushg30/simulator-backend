@@ -20,6 +20,11 @@ public class DecisionWriteService {
     private final ArtifactQueryRepository repository;
     private final ObjectMapper objectMapper;
 
+    /** How often, per participant, the expiry sweep is allowed to run. */
+    private static final long SILENCE_SWEEP_INTERVAL_MS = 15_000L;
+    private final java.util.concurrent.ConcurrentHashMap<UUID, Long> lastSilenceSweep =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
     // Inject ObjectMapper as a Spring bean — no manual instantiation needed
     public DecisionWriteService(ArtifactQueryRepository repository, ObjectMapper objectMapper) {
         this.repository = repository;
@@ -135,6 +140,16 @@ public class DecisionWriteService {
      * hidden variables that specific artifact feeds.
      */
     public void processSilence(UUID runId, UUID participantId) {
+        // Every artifact poll used to run the (join-heavy) expiry sweep. Nothing can expire until a
+        // round actually ends, so at cohort scale that was pure load. Sweep at most once per window per
+        // participant; a No Response is still recorded well within the between-rounds gap.
+        long now = System.currentTimeMillis();
+        Long last = lastSilenceSweep.get(participantId);
+        if (last != null && now - last < SILENCE_SWEEP_INTERVAL_MS) {
+            return;
+        }
+        lastSilenceSweep.put(participantId, now);
+
         var expired = repository.findExpiredUnansweredDecisions(runId, participantId);
 
         for (Object[] row : expired) {
@@ -143,19 +158,12 @@ public class DecisionWriteService {
 
             String latencyBand = computeLatencyBand(runId, artifactId, LocalDateTime.now());
 
-            repository.insertDecisionEvent(
-                runId,
-                participantId,
-                artifactId,
-                decisionId,
-                "SILENCE",
-                "IMPLICIT",
-                latencyBand,
-                LocalDateTime.now()
-            );
-
-            // Indecision is a decision: charge it against the variables this artifact actually feeds.
-            repository.applyNoResponsePenalty(runId, participantId, decisionId);
+            // Idempotent: concurrent polls cannot double-insert (and so cannot double-charge).
+            int written = repository.insertSilenceEvent(runId, participantId, artifactId, decisionId, latencyBand);
+            if (written > 0) {
+                // Indecision is a decision: charge it against the variables this artifact actually feeds.
+                repository.applyNoResponsePenalty(runId, participantId, decisionId);
+            }
         }
     }
 }

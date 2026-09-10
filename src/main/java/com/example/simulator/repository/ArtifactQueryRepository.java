@@ -654,6 +654,23 @@ public interface ArtifactQueryRepository extends org.springframework.data.reposi
 	UUID findCeoParticipant(@Param("runId") UUID runId);
 
 	/**
+	 * Idempotent insert for the "No Response" outcome. A client's 3-second polls can overlap when the
+	 * service is under load, and two concurrent silence sweeps would otherwise insert the same row and
+	 * trip the per-participant unique constraint — surfacing to the student as a failed request. Returns
+	 * the number of rows actually written, so the caller only charges the penalty once.
+	 */
+	@Modifying
+	@Query(value = """
+			INSERT INTO decision_events
+			  (run_id, run_participant_id, artifact_id, decision_id, action, decision_type, latency_band, decided_at)
+			VALUES (:runId, :participantId, :artifactId, :decisionId, 'SILENCE', 'IMPLICIT', :latencyBand, now())
+			ON CONFLICT DO NOTHING
+			""", nativeQuery = true)
+	int insertSilenceEvent(@Param("runId") UUID runId, @Param("participantId") UUID participantId,
+			@Param("artifactId") UUID artifactId, @Param("decisionId") UUID decisionId,
+			@Param("latencyBand") String latencyBand);
+
+	/**
 	 * Applies the "No Response" cost for a decision that expired unanswered (script 1.7). The penalty is
 	 * derived from that decision's OWN options, so it only touches the hidden variables that artifact
 	 * actually feeds — never a flat penalty applied everywhere. For each variable it takes the worst
