@@ -120,7 +120,13 @@ public class Sim1ReportService {
 				framings.put(num(row.get("round")), m);
 			}
 		}
-		out.put("trail", trail);
+		// The decision trail is the facilitator's audit view. It is not in the student report: a team
+		// already lived its own decisions, and the artifact titles plus the exact option wording are the
+		// most directly copyable part of the scenario. Omitted from the payload, not just the page, so
+		// it cannot be read out of the network response either.
+		if (includeInternals) {
+			out.put("trail", trail);
+		}
 
 		List<Map<String, Object>> rounds = new ArrayList<>();
 		for (int n = 1; n <= 4; n++) {
