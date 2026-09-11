@@ -112,14 +112,16 @@ public class Sim1ConstructService {
             teamCons.put(c, band(teamVals.get(c)));
         }
 
+        // Insight strings are read by BOTH audiences — the console and the team report — so they carry
+        // no raw scoring numbers. The facilitator gets the underlying values from `effects` alongside,
+        // which never leaves the faculty side.
         List<String> insights = new ArrayList<>();
         if (escalationForeclosed) {
             insights.add("Round-1 silence foreclosed escalation — options were effectively closed entering "
-                    + "Round 2 (Silence R1 = " + round1Silence + ").");
+                    + "Round 2.");
         }
         if (interaction >= 10) {
-            insights.add("Silence and framing compounded to accelerate option-space contraction (+"
-                    + interaction + ").");
+            insights.add("Silence and framing compounded to accelerate option-space contraction.");
         }
         if (teamVals.get(ESL) >= 70) {
             insights.add("Weak signals were legitimized early and the team kept its options open.");

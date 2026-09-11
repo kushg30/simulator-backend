@@ -44,8 +44,21 @@ public class Sim1ReportService {
 
 	// ------------------------------------------------------------------ report
 
-	/** Everything the team report renders, for one run. */
+	/** The facilitator's copy: identical layout, but with the scoring internals left in. */
 	public Map<String, Object> report(UUID runId) {
+		return report(runId, true);
+	}
+
+	/**
+	 * Everything the team report renders, for one run.
+	 *
+	 * @param includeInternals true for the facilitator. When false the payload is stripped for a
+	 *        student audience: construct bands without the 0-100 values behind them, no per-participant
+	 *        scores (a teammate's individual profile is not the team's to read), and none of the
+	 *        Option-Space interaction terms — those are the scoring model itself, and publishing them in
+	 *        a downloadable PDF would hand over enough to reconstruct it.
+	 */
+	public Map<String, Object> report(UUID runId, boolean includeInternals) {
 		Map<String, Object> header = repo.findRunHeader(runId);
 		if (header == null || header.isEmpty()) {
 			throw new IllegalStateException("No such run");
@@ -131,10 +144,38 @@ public class Sim1ReportService {
 
 		// ── Set B, with the team's standing in the cohort ──
 		Map<String, Object> b = constructs.constructs(runId);
-		out.put("setB", b.get("team"));
-		out.put("setBParticipants", b.get("participants"));
+		out.put("setB", includeInternals ? b.get("team") : studentSafeSetB(b.get("team")));
+		if (includeInternals) {
+			out.put("setBParticipants", b.get("participants"));
+		}
 		out.put("constructOrder", Sim1ConstructService.CONSTRUCTS);
 		out.put("standing", standing(simulationId, runId));
+		return out;
+	}
+
+	/**
+	 * The team-level Set-B block with the scoring internals removed: each construct keeps its band but
+	 * loses the 0-100 value, and the Option-Space effects collapse to the one qualitative fact the
+	 * report actually states — whether the Round-1 silence threshold was crossed.
+	 */
+	@SuppressWarnings("unchecked")
+	private Map<String, Object> studentSafeSetB(Object team) {
+		Map<String, Object> src = (Map<String, Object>) team;
+		Map<String, Object> out = new LinkedHashMap<>();
+
+		Map<String, Object> cons = new LinkedHashMap<>();
+		Map<String, Object> srcCons = (Map<String, Object>) src.get("constructs");
+		for (String c : Sim1ConstructService.CONSTRUCTS) {
+			Map<String, Object> node = (Map<String, Object>) srcCons.get(c);
+			cons.put(c, node == null ? null : Map.of("band", node.get("band")));
+		}
+		out.put("constructs", cons);
+		out.put("dominantPattern", src.get("dominantPattern"));
+		out.put("insights", src.get("insights"));
+
+		Map<String, Object> effects = (Map<String, Object>) src.get("effects");
+		out.put("effects", Map.of("escalationForeclosed",
+				Boolean.TRUE.equals(effects.get("escalationForeclosed"))));
 		return out;
 	}
 
