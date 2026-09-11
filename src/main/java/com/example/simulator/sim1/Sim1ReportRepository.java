@@ -70,6 +70,7 @@ public interface Sim1ReportRepository
 			       de.action            AS "action",
 			       de.decided_at        AS "decidedAt",
 			       d.is_final           AS "isFinal",
+			       d.decision_type      AS "decisionType",
 			       a.open_offset_min    AS "openOffsetMin",
 			       (SELECT opt->>'label' FROM jsonb_array_elements(d.options) opt
 			         WHERE opt->>'id' = de.action LIMIT 1) AS "label"

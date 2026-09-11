@@ -110,6 +110,9 @@ public class Sim1ReportService {
 			m.put("label", silence ? null : row.get("label"));
 			m.put("noResponse", silence);
 			m.put("decidedAt", row.get("decidedAt"));
+			// EXPLICIT decisions are the deliberate, scripted choice points; IMPLICIT ones are the
+			// ambient reactions. The report curates on this rather than printing all 78 rows.
+			m.put("decisionType", row.get("decisionType"));
 			boolean isFinal = Boolean.TRUE.equals(row.get("isFinal"));
 			m.put("isFinal", isFinal);
 			trail.add(m);
