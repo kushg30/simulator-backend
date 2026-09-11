@@ -65,7 +65,7 @@ public class ArtifactController {
             return ResponseEntity.badRequest()
                     .body(Map.of("error", "Your report is available once the simulation is complete."));
         }
-        return ResponseEntity.ok(reports.report(runId, false));
+        return ResponseEntity.ok(reports.report(runId));
     }
 
     /** CEO releases a completed round's debrief interstitial so the team advances together. */

@@ -44,21 +44,17 @@ public class Sim1ReportService {
 
 	// ------------------------------------------------------------------ report
 
-	/** The facilitator's copy: identical layout, but with the scoring internals left in. */
-	public Map<String, Object> report(UUID runId) {
-		return report(runId, true);
-	}
-
 	/**
 	 * Everything the team report renders, for one run.
 	 *
-	 * @param includeInternals true for the facilitator. When false the payload is stripped for a
-	 *        student audience: construct bands without the 0-100 values behind them, no per-participant
-	 *        scores (a teammate's individual profile is not the team's to read), and none of the
-	 *        Option-Space interaction terms — those are the scoring model itself, and publishing them in
-	 *        a downloadable PDF would hand over enough to reconstruct it.
+	 * <p>There is ONE report and both audiences get the same document, so there is one payload and it
+	 * is built to the stricter standard throughout: construct bands without the 0-100 values behind
+	 * them, no per-participant scores (a teammate's individual profile is not the team's to read), no
+	 * Option-Space interaction terms, and no decision trail. Those are the scoring model and the
+	 * scenario content; a downloadable PDF is the wrong place for either. The facilitator sees all of
+	 * it in the console, which stays behind the token.
 	 */
-	public Map<String, Object> report(UUID runId, boolean includeInternals) {
+	public Map<String, Object> report(UUID runId) {
 		Map<String, Object> header = repo.findRunHeader(runId);
 		if (header == null || header.isEmpty()) {
 			throw new IllegalStateException("No such run");
@@ -94,38 +90,24 @@ public class Sim1ReportService {
 		out.put("decisionsAnswered", teamAnswered);
 		out.put("noResponses", teamSilent);
 
-		// ── the trail, and the CEO framing that closed each round ──
-		List<Map<String, Object>> trail = new ArrayList<>();
+		// ── the CEO framing that closed each round ──
+		// The per-decision trail is deliberately NOT part of the report, for either audience: the
+		// artifact titles paired with the exact option wording are the most directly copyable part of
+		// the scenario, and one downloaded report would be one leak. Only the four framings are lifted
+		// out of it, so the trail never reaches the payload and cannot be pulled from a network
+		// response. Faculty read the per-decision detail in the console instead.
 		Map<Integer, Map<String, Object>> framings = new LinkedHashMap<>();
 		for (Map<String, Object> row : repo.findDecisionTrail(runId)) {
+			if (!Boolean.TRUE.equals(row.get("isFinal"))) {
+				continue;
+			}
 			boolean silence = "SILENCE".equals(row.get("action"));
 			Map<String, Object> m = new LinkedHashMap<>();
-			m.put("round", num(row.get("round")));
-			m.put("artifactTitle", row.get("artifactTitle"));
-			m.put("role", row.get("role"));
-			m.put("name", row.get("name"));
-			m.put("action", row.get("action"));
 			// A No Response is its own outcome, never one of the authored options — so it has no label
 			// and the report must not borrow one.
-			m.put("label", silence ? null : row.get("label"));
-			m.put("noResponse", silence);
-			m.put("decidedAt", row.get("decidedAt"));
-			// EXPLICIT decisions are the deliberate, scripted choice points; IMPLICIT ones are the
-			// ambient reactions. The report curates on this rather than printing all 78 rows.
-			m.put("decisionType", row.get("decisionType"));
-			boolean isFinal = Boolean.TRUE.equals(row.get("isFinal"));
-			m.put("isFinal", isFinal);
-			trail.add(m);
-			if (isFinal) {
-				framings.put(num(row.get("round")), m);
-			}
-		}
-		// The decision trail is the facilitator's audit view. It is not in the student report: a team
-		// already lived its own decisions, and the artifact titles plus the exact option wording are the
-		// most directly copyable part of the scenario. Omitted from the payload, not just the page, so
-		// it cannot be read out of the network response either.
-		if (includeInternals) {
-			out.put("trail", trail);
+			m.put("framing", silence ? null : row.get("label"));
+			m.put("submitted", !silence);
+			framings.put(num(row.get("round")), m);
 		}
 
 		List<Map<String, Object>> rounds = new ArrayList<>();
@@ -133,8 +115,8 @@ public class Sim1ReportService {
 			Map<String, Object> f = framings.get(n);
 			Map<String, Object> m = new LinkedHashMap<>();
 			m.put("round", n);
-			m.put("framing", f == null ? null : f.get("label"));
-			m.put("submitted", f != null && !Boolean.TRUE.equals(f.get("noResponse")));
+			m.put("framing", f == null ? null : f.get("framing"));
+			m.put("submitted", f != null && Boolean.TRUE.equals(f.get("submitted")));
 			rounds.add(m);
 		}
 		out.put("rounds", rounds);
@@ -153,10 +135,7 @@ public class Sim1ReportService {
 
 		// ── Set B, with the team's standing in the cohort ──
 		Map<String, Object> b = constructs.constructs(runId);
-		out.put("setB", includeInternals ? b.get("team") : studentSafeSetB(b.get("team")));
-		if (includeInternals) {
-			out.put("setBParticipants", b.get("participants"));
-		}
+		out.put("setB", bandsOnlySetB(b.get("team")));
 		out.put("constructOrder", Sim1ConstructService.CONSTRUCTS);
 		out.put("standing", standing(simulationId, runId));
 		return out;
@@ -168,7 +147,7 @@ public class Sim1ReportService {
 	 * report actually states — whether the Round-1 silence threshold was crossed.
 	 */
 	@SuppressWarnings("unchecked")
-	private Map<String, Object> studentSafeSetB(Object team) {
+	private Map<String, Object> bandsOnlySetB(Object team) {
 		Map<String, Object> src = (Map<String, Object>) team;
 		Map<String, Object> out = new LinkedHashMap<>();
 
