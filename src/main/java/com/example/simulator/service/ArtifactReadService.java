@@ -222,7 +222,7 @@ public class ArtifactReadService {
 	public Map<String, Object> getRoundSummary(UUID runId, int roundNumber) {
 		Map<String, Object> out = new LinkedHashMap<>();
 		out.put("roundNumber", roundNumber);
-		boolean submitted = repository.countFinalDecision(runId, roundNumber) > 0;
+		boolean submitted = repository.countSubmittedFinal(runId, roundNumber) > 0;
 		out.put("submitted", submitted);
 		if (submitted) {
 			Map<String, Object> f = repository.findFinalFraming(runId, roundNumber);

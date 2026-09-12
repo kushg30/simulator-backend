@@ -146,6 +146,13 @@ public class FacultyService {
 	 * run-level scores). The round clock is deliberately left running.
 	 */
 	public Map<String, Object> restartLastRound(UUID runId, String note, String actor) {
+		// Sim 1 rounds are time-boxed, not submission-gated, so there is no submission to re-open: this
+		// path used to look for a Sim-2 submission, find none, and tell the facilitator the team had
+		// "not submitted a round yet" — which is why Restart appeared to do nothing on Sim 1.
+		if (repository.isSim1Run(runId)) {
+			return restartSim1Round(runId, note, actor);
+		}
+
 		Integer round = repository.findLastCompleteSim2Round(runId);
 		if (round == null) {
 			throw new IllegalStateException("This team has not submitted a round yet");
@@ -157,6 +164,31 @@ public class FacultyService {
 		log(runId, round, "RESTART", "TEAM", null, null, null, note, actor);
 		return Map.of("runId", runId, "roundNumber", round, "restarted", true,
 				"note", "Round " + round + " re-opened for submission; the clock kept running");
+	}
+
+	/**
+	 * Replays a Simulator 1 round from its first artifact with a fresh clock.
+	 *
+	 * <p>Everything that round recorded is cleared — decisions and the No Response rows alike — so the
+	 * team is not carrying penalties from the attempt being thrown away, and the pause bookkeeping is
+	 * reset so the new clock is not offset by the old one. A terminated run is brought back, so this
+	 * doubles as the recovery path for a team ended by mistake.
+	 */
+	private Map<String, Object> restartSim1Round(UUID runId, String note, String actor) {
+		Integer round = repository.findLastSim1Round(runId);
+		if (round == null) {
+			throw new IllegalStateException("This team has not started a round yet");
+		}
+		int cleared = repository.deleteSim1RoundDecisions(runId, round);
+		repository.clearSim1RoundStateFrom(runId, round);
+		repository.clearSim1RoundClock(runId, round);
+		repository.reopenSim1Round(runId, round);
+		repository.reactivateRun(runId);
+		log(runId, round, "RESTART", "TEAM", null, null, null, note, actor);
+		return Map.of("runId", runId, "roundNumber", round, "restarted", true,
+				"decisionsCleared", cleared,
+				"note", "Round " + round + " restarted from the top with a fresh clock; "
+						+ cleared + " recorded decision(s) cleared");
 	}
 
 	// ------------------------------------------------------------- terminate

@@ -308,6 +308,53 @@ public interface FacultyRepository extends org.springframework.data.repository.R
 			""", nativeQuery = true)
 	void reopenSim2Round(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
 
+	// ---- Simulator 1 round restart ------------------------------------------------
+	// Sim 1 is time-boxed: a round lives in sim1_round_state and advances on its own clock, so
+	// restarting one means re-opening that round with a fresh start time and replaying its artifact
+	// timeline — not re-opening a submission, which is all the Sim 2 path knows how to do.
+
+	/** The highest round this Sim-1 run has reached, active or complete. */
+	@Query(value = "SELECT MAX(rs.round_number) FROM sim1_round_state rs WHERE rs.run_id = :runId",
+			nativeQuery = true)
+	Integer findLastSim1Round(@Param("runId") UUID runId);
+
+	/** Clears every decision recorded in one Sim-1 round, the No Response rows included. */
+	@Modifying
+	@Query(value = """
+			DELETE FROM decision_events de
+			USING artifacts a, rounds r
+			WHERE de.run_id = :runId
+			  AND a.artifact_id = de.artifact_id
+			  AND r.round_id = a.round_id
+			  AND r.round_number = :roundNumber
+			""", nativeQuery = true)
+	int deleteSim1RoundDecisions(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
+
+	/** Drops round state at or after the restarted round, so the run can re-enter it cleanly. */
+	@Modifying
+	@Query(value = "DELETE FROM sim1_round_state WHERE run_id = :runId AND round_number >= :roundNumber",
+			nativeQuery = true)
+	void clearSim1RoundStateFrom(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
+
+	/** Clears pause bookkeeping for the restarted round, so its clock starts clean. */
+	@Modifying
+	@Query(value = "DELETE FROM run_round_clock WHERE run_id = :runId AND round_number = :roundNumber",
+			nativeQuery = true)
+	void clearSim1RoundClock(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
+
+	/** Re-opens a Sim-1 round with a fresh start time, replaying its whole artifact timeline. */
+	@Modifying
+	@Query(value = """
+			INSERT INTO sim1_round_state (run_id, round_number, status, started_at, interstitial_acked)
+			VALUES (:runId, :roundNumber, 'ACTIVE', now(), false)
+			""", nativeQuery = true)
+	void reopenSim1Round(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
+
+	/** True when this run belongs to a time-boxed (Sim 1 style) simulation. */
+	@Query(value = "SELECT EXISTS (SELECT 1 FROM sim1_round_state rs WHERE rs.run_id = :runId)",
+			nativeQuery = true)
+	boolean isSim1Run(@Param("runId") UUID runId);
+
 	/**
 	 * Brings a run back to life if it was terminated, so a restart can recover a team ended by
 	 * mistake. A restart on a TERMINATED run otherwise re-opens the round while the run stays dead —

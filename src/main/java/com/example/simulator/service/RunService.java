@@ -2,7 +2,10 @@ package com.example.simulator.service;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -53,11 +56,21 @@ public class RunService {
 		// 🔥 fetch all participants of team
 		List<Map<String, Object>> participants = repository.getParticipantsByTeam(teamId);
 
-		boolean allAssigned = !participants.isEmpty()
-				&& participants.stream().allMatch(p -> p.get("role") != null);
+		// Readiness is measured against the simulation's ROLE SEATS, not against "every person who ever
+		// pressed join has a role". Joining creates a participant row BEFORE a role is chosen, so a
+		// double-tap, a reload, or one spare student in the room leaves a roleless row behind — and the
+		// old all-participants check then made that team permanently unstartable, while the waiting
+		// room (which counts seats) showed 6/6 and happily enabled the button. That mismatch is what
+		// produced "unable to start" however many times a team retried.
+		Set<String> filledSeats = participants.stream()
+				.map(p -> (String) p.get("role"))
+				.filter(Objects::nonNull)
+				.collect(Collectors.toSet());
+		int requiredSeats = teamService.getRoles(teamId).size();
 
-		if (!allAssigned) {
-			throw new RuntimeException("All roles must be assigned before starting");
+		if (requiredSeats > 0 && filledSeats.size() < requiredSeats) {
+			throw new IllegalStateException("All " + requiredSeats
+					+ " roles must be taken before starting (" + filledSeats.size() + " so far)");
 		}
 
 		repository.createRun(runId, simulationId, team.getTeamName(), teamId);

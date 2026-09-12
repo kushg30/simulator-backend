@@ -43,6 +43,15 @@ public interface ArtifactQueryRepository extends org.springframework.data.reposi
 
 			  CASE
 			    WHEN de.decision_event_id IS NOT NULL THEN 'ACTED'
+			    -- An artifact can be addressed to the whole team while its decision belongs to one
+			    -- role (the Round-2 Leadership Alignment Meeting is the case that bit us: everyone
+			    -- sees the invite, only the CEO answers it). Without this check every other role was
+			    -- offered the buttons and the server rejected the click, which reads to a student as
+			    -- "I cannot take my decision".
+			    WHEN d.decision_id IS NOT NULL
+			         AND d.allowed_roles IS NOT NULL
+			         AND NOT (d.allowed_roles @> '["ALL"]'::jsonb)
+			         AND NOT (d.allowed_roles @> to_jsonb(rp.role)) THEN 'READ_ONLY'
 			    WHEN now() >= (rs.started_at
 			                   + ((a.expiry_offset_min + COALESCE(ov.delay_minutes, 0)) || ' minutes')::interval
 			                   + (pause.secs || ' seconds')::interval) THEN 'EXPIRED'
@@ -656,6 +665,26 @@ public interface ArtifactQueryRepository extends org.springframework.data.reposi
 			""", nativeQuery = true)
 	int countFinalDecision(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
 
+	/**
+	 * Whether the CEO ACTUALLY submitted a framing, as opposed to the round expiring on them.
+	 *
+	 * <p>A missed final still writes a decision_event — action SILENCE — so the count above sees a row
+	 * and reports the round as submitted. The post-round screen then printed the framing as the literal
+	 * word "SILENCE" instead of saying no decision was submitted. This is the count the debrief screen
+	 * and the report use; the advancer keeps using the one above, which is about whether a row exists at
+	 * all and must stay that way so a missed final is not penalised twice.
+	 */
+	@Query(value = """
+			SELECT count(*) FROM decision_events de
+			JOIN decisions d ON d.decision_id = de.decision_id AND d.is_final
+			JOIN artifacts a ON a.artifact_id = d.artifact_id
+			JOIN rounds r ON r.round_id = a.round_id
+			JOIN simulation_runs sr ON sr.simulation_id = r.simulation_id AND sr.run_id = de.run_id
+			WHERE de.run_id = :runId AND r.round_number = :roundNumber
+			  AND de.action <> 'SILENCE'
+			""", nativeQuery = true)
+	int countSubmittedFinal(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
+
 	/** The CEO's submitted framing for a round: chosen action code and its option label (1.10). */
 	@Query(value = """
 			SELECT de.action AS "action",
@@ -667,6 +696,7 @@ public interface ArtifactQueryRepository extends org.springframework.data.reposi
 			JOIN rounds r ON r.round_id = a.round_id
 			JOIN simulation_runs sr ON sr.simulation_id = r.simulation_id AND sr.run_id = de.run_id
 			WHERE de.run_id = :runId AND r.round_number = :roundNumber
+			  AND de.action <> 'SILENCE'
 			LIMIT 1
 			""", nativeQuery = true)
 	Map<String, Object> findFinalFraming(@Param("runId") UUID runId, @Param("roundNumber") int roundNumber);
