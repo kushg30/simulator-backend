@@ -29,12 +29,15 @@ public class Sim1ReportService {
 	private final Sim1ReportRepository repo;
 	private final Sim1ConstructService constructs;
 	private final com.example.simulator.simulation.Sim1DebriefRepository debriefRepo;
+	private final Sim1ResultsService results;
 
 	public Sim1ReportService(Sim1ReportRepository repo, Sim1ConstructService constructs,
-			com.example.simulator.simulation.Sim1DebriefRepository debriefRepo) {
+			com.example.simulator.simulation.Sim1DebriefRepository debriefRepo,
+			Sim1ResultsService results) {
 		this.repo = repo;
 		this.constructs = constructs;
 		this.debriefRepo = debriefRepo;
+		this.results = results;
 	}
 
 	/** Set-A keys in report order. Trust and Execution read high-is-good; the other two are adverse. */
@@ -144,7 +147,17 @@ public class Sim1ReportService {
 		}
 		out.put("setA", setA);
 
+		// ── the results screen's own payload, embedded verbatim ──
+		// The report and the Final Results Screen used to score the team independently — the screen
+		// from raw option points, the report from a separate 0-100 derivation — so the same team read
+		// two different sets of numbers depending on which one it opened. There is now ONE computation
+		// and the report renders it, which is the only way the two can be guaranteed to agree.
+		out.put("results", results.results(runId));
+
 		// ── Set B, with the team's standing in the cohort ──
+		// Retained for the facilitator's Set-B console view only. It is a separate construct model
+		// with its own mappings, it has none for the 20-minute build, and the report no longer renders
+		// it — the four variables above are what both audiences read.
 		Map<String, Object> b = constructs.constructs(runId);
 		out.put("setB", bandsOnlySetB(b.get("team")));
 		out.put("constructOrder", Sim1ConstructService.CONSTRUCTS);

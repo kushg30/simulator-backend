@@ -92,6 +92,25 @@ public class Sim1ResultsService {
 		int composite = composite(totals);
 		out.put("composite", composite);
 
+		// The composite is a SIGNED total — the three favourable variables minus the adverse one — so
+		// it runs well below zero at the bad end. A bare "-27" read as a percentage or a mark out of
+		// 100 is alarming and wrong; shipping the range it sits in makes it interpretable.
+		int compMin = 0;
+		int compMax = 0;
+		for (String v : VARS) {
+			int min = num(range.get("min" + cap(v)));
+			int max = num(range.get("max" + cap(v)));
+			if (EXPOSURE.equals(v)) {
+				compMin -= max; // worst case takes on the most exposure
+				compMax -= min;
+			} else {
+				compMin += min;
+				compMax += max;
+			}
+		}
+		out.put("compositeMin", compMin);
+		out.put("compositeMax", compMax);
+
 		List<int[]> cohort = new ArrayList<>(); // [composite, exposure, isYou]
 		for (Map<String, Object> row : repo.findCohortTotals(simulationId, SCALE)) {
 			Map<String, Integer> t = new LinkedHashMap<>();
