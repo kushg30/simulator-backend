@@ -36,13 +36,16 @@ public interface Sim1DebriefRepository
 			       ON rcs.run_id = sr.run_id
 			      AND rcs.run_participant_id = rp.run_participant_id
 			WHERE sr.simulation_id = :simulationId
-			  -- Scratch test runs from development, excluded by run_id (never by name) so a real
-			  -- future team is free to call itself "Team" without being hidden here too.
+			  -- Excluded by run_id (never by name), so a real future team can reuse any of these
+			  -- names without being hidden here too. First four are scratch test runs from
+			  -- development; the fifth is a duplicate team record from the Sep 12 class session
+			  -- (the other "Mockingbirds" entry is kept).
 			  AND sr.run_id NOT IN (
 			        '10f1ba25-2e1e-468e-9ceb-6994d0924194', -- "Team"
 			        'f064d7b8-561c-46db-990c-a1092849325a', -- "Team"
 			        'bbd75345-4742-4e7c-8f06-a6d808c157ee', -- "OG Team"
-			        '5c1022d5-78e2-4108-87b1-043d2729ce81'  -- "OG Team"
+			        '5c1022d5-78e2-4108-87b1-043d2729ce81', -- "OG Team"
+			        'a84922a5-43ef-4bd9-990a-345fbaafc0a1'  -- "The Mockingbirds"
 			      )
 			ORDER BY sr.started_at DESC, sr.run_id, rp.role
 			""", nativeQuery = true)
