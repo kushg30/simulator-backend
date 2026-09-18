@@ -113,16 +113,36 @@ public interface Sim1ResultsRepository
 			""", nativeQuery = true)
 	Map<String, Object> findPossibleRange(@Param("simulationId") UUID simulationId, @Param("scale") int scale);
 
-	/** Every run in the cohort with its raw totals, for the composite ranking and the distribution. */
+	/**
+	 * Every run in the cohort with its raw totals, for the composite ranking and the distribution.
+	 *
+	 * <p>This has to score a run EXACTLY as the two per-team queries above do together: answered
+	 * decisions, PLUS the worst-available penalty for every No Response. It once counted answered
+	 * decisions only, so a team that let decisions expire saw its own bar contradict its own composite
+	 * — one run reported a composite of -27 beside a cohort bar of 4 — and the ranking was computed on
+	 * a different basis from the number every team was actually reading.
+	 */
 	@Query(value = """
 			SELECT sr.run_id AS "runId",
-			       COALESCE(SUM(o.trust_delta), 0)     / :scale AS "trust",
-			       COALESCE(SUM(o.risk_delta), 0)      / :scale AS "governance",
-			       COALESCE(SUM(o.execution_delta), 0) / :scale AS "rigor",
-			       COALESCE(SUM(o.ethics_delta), 0)    / :scale AS "exposure"
+			       COALESCE(SUM(p.trust), 0)      / :scale AS "trust",
+			       COALESCE(SUM(p.governance), 0) / :scale AS "governance",
+			       COALESCE(SUM(p.rigor), 0)      / :scale AS "rigor",
+			       COALESCE(SUM(p.exposure), 0)   / :scale AS "exposure"
 			FROM simulation_runs sr
-			LEFT JOIN decision_events de ON de.run_id = sr.run_id AND de.action <> 'SILENCE'
-			LEFT JOIN decision_options o ON o.decision_id = de.decision_id AND o.action = de.action
+			LEFT JOIN decision_events de ON de.run_id = sr.run_id
+			LEFT JOIN LATERAL (
+			  SELECT CASE WHEN de.action = 'SILENCE' THEN w.worst_trust      ELSE o.trust_delta     END AS trust,
+			         CASE WHEN de.action = 'SILENCE' THEN w.worst_governance ELSE o.risk_delta      END AS governance,
+			         CASE WHEN de.action = 'SILENCE' THEN w.worst_rigor      ELSE o.execution_delta END AS rigor,
+			         CASE WHEN de.action = 'SILENCE' THEN w.worst_exposure   ELSE o.ethics_delta    END AS exposure
+			  FROM (SELECT MIN(x.trust_delta)     AS worst_trust,
+			               MIN(x.risk_delta)      AS worst_governance,
+			               MIN(x.execution_delta) AS worst_rigor,
+			               MAX(x.ethics_delta)    AS worst_exposure
+			        FROM decision_options x WHERE x.decision_id = de.decision_id) w
+			  LEFT JOIN decision_options o
+			         ON o.decision_id = de.decision_id AND o.action = de.action
+			) p ON true
 			WHERE sr.simulation_id = :simulationId
 			  AND sr.status <> 'TERMINATED'
 			  AND EXISTS (SELECT 1 FROM decision_events x WHERE x.run_id = sr.run_id)
