@@ -59,12 +59,25 @@ public interface Sim1ConstructRepository
             """, nativeQuery = true)
     String findTeamName(@Param("runId") UUID runId);
 
-    /** Every Simulator-1 run for a simulation that has recorded at least one decision, newest first. */
+    /**
+     * Every Simulator-1 run for a simulation that has recorded at least one decision, newest first.
+     *
+     * <p>Feeds the Teams table AND, via {@code Sim1ReportService.leaderboard}, the Cohort ranking — one
+     * exclusion here keeps scratch test runs out of both.
+     */
     @Query(value = """
             SELECT sr.run_id AS "runId", sr.team_name AS "teamName", sr.started_at AS "startedAt"
             FROM simulation_runs sr
             WHERE sr.simulation_id = :simulationId
               AND EXISTS (SELECT 1 FROM decision_events de WHERE de.run_id = sr.run_id)
+              -- Scratch test runs from development, excluded by run_id (never by name) so a real
+              -- future team is free to call itself "Team" without being hidden here too.
+              AND sr.run_id NOT IN (
+                    '10f1ba25-2e1e-468e-9ceb-6994d0924194', -- "Team"
+                    'f064d7b8-561c-46db-990c-a1092849325a', -- "Team"
+                    'bbd75345-4742-4e7c-8f06-a6d808c157ee', -- "OG Team"
+                    '5c1022d5-78e2-4108-87b1-043d2729ce81'  -- "OG Team"
+                  )
             ORDER BY sr.started_at DESC
             """, nativeQuery = true)
     List<Map<String, Object>> findRunsForSimulation(@Param("simulationId") UUID simulationId);
