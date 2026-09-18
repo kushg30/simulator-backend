@@ -40,7 +40,18 @@ public class Sim1ReportService {
 	/** Set-A keys in report order. Trust and Execution read high-is-good; the other two are adverse. */
 	private static final List<String> SET_A = List.of(
 			"stakeholder_trust", "organizational_risk", "execution_quality", "ethical_exposure");
-	private static final Set<String> SET_A_ADVERSE = Set.of("organizational_risk", "ethical_exposure");
+
+	/**
+	 * The variables where a HIGH value is the bad outcome.
+	 *
+	 * <p>This used to include {@code organizational_risk}, back when that column meant "Organizational
+	 * Risk". Under the current script the same column carries <em>Governance Accountability</em>, where
+	 * a high value means the team could always point to who owned a decision — a good outcome, and the
+	 * opposite reading. The storage key is unchanged (renaming it would orphan the recorded sessions
+	 * that reference it), so the direction lives here and in the front-end's per-simulation label map.
+	 * Ethical Exposure is now the only forward-looking variable where more is worse.
+	 */
+	private static final Set<String> SET_A_ADVERSE = Set.of("ethical_exposure");
 
 	// ------------------------------------------------------------------ report
 
