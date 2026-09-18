@@ -19,11 +19,14 @@ public class ArtifactController {
 
     private final ArtifactReadService service;
     private final com.example.simulator.sim1.Sim1ReportService reports;
+    private final com.example.simulator.sim1.Sim1ResultsService results;
 
     public ArtifactController(ArtifactReadService service,
-            com.example.simulator.sim1.Sim1ReportService reports) {
+            com.example.simulator.sim1.Sim1ReportService reports,
+            com.example.simulator.sim1.Sim1ResultsService results) {
         this.service = service;
         this.reports = reports;
+        this.results = results;
     }
 
     @GetMapping("/{runId}/participants/{participantId}/artifacts")
@@ -66,6 +69,24 @@ public class ArtifactController {
                     .body(Map.of("error", "Your report is available once the simulation is complete."));
         }
         return ResponseEntity.ok(reports.report(runId));
+    }
+
+    /**
+     * The Final Results Screen (script section 8) — the four variables as raw point totals with their
+     * bands, the per-round trajectory, the cohort distribution, composite score and rank, the
+     * Framing Commitment pattern, and the four CEO framings as a plain record.
+     *
+     * <p>Released only once the simulation has finished, for the same reason the report is: during
+     * play this would hand a team its scores mid-round, which is exactly what the design withholds.
+     */
+    @GetMapping("/{runId}/results")
+    public ResponseEntity<?> finalResults(@PathVariable UUID runId) {
+        Map<String, Object> state = service.getRoundState(runId);
+        if (!Boolean.TRUE.equals(state.get("completed"))) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "Results are available once the simulation is complete."));
+        }
+        return ResponseEntity.ok(results.results(runId));
     }
 
     /** CEO releases a completed round's debrief interstitial so the team advances together. */
