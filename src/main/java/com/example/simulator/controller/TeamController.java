@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.example.simulator.config.Validate;
 import com.example.simulator.service.TeamService;
 
 @RestController
@@ -17,6 +18,22 @@ import com.example.simulator.service.TeamService;
 public class TeamController {
 
     private final TeamService service;
+
+    /**
+     * Field limits for everything a student types. Generous enough that no real name or team name is
+     * ever refused, small enough that the column cannot be used as free storage.
+     */
+    private static final int NAME_MAX = 80;
+
+    /**
+     * Role codes are authored by us, not typed: they are upper-snake constants like
+     * {@code HEAD_OF_ENGINEERING}. The value is checked against the simulation's own role list in the
+     * service too — this is the cheap shape check before that lookup.
+     */
+    private static final String ROLE_PATTERN = "[A-Z][A-Z0-9_]{1,39}";
+
+    /** The join code the students type: 4 digits today, with room for 5-6 if the space is widened. */
+    private static final String JOIN_CODE_PATTERN = "[0-9]{4,6}";
 
     public TeamController(TeamService service) {
         this.service = service;
@@ -27,13 +44,11 @@ public class TeamController {
     // simulation (Sim 1), which keeps the existing Sim-1 frontend working unchanged.
     @PostMapping
     public ResponseEntity<?> createTeam(@RequestBody Map<String, String> req) {
-
-        String simulationId = req.get("simulationId");
         try {
             return ResponseEntity.ok(service.createTeam(
-                    req.get("teamName"),
-                    req.get("participantName"),
-                    (simulationId == null || simulationId.isBlank()) ? null : UUID.fromString(simulationId)
+                    Validate.requiredText(req.get("teamName"), "Team name", NAME_MAX),
+                    Validate.optionalText(req.get("participantName"), "Your name", NAME_MAX),
+                    Validate.optionalUuid(req.get("simulationId"), "simulationId")
             ));
         } catch (RuntimeException e) {
             // Validation errors (e.g. blank / all-numeric team name) → clean 400, not a 500.
@@ -42,18 +57,23 @@ public class TeamController {
     }
 
     // 🟢 JOIN TEAM
+    // participantName is OPTIONAL by design and must stay that way: Sim 1 and Sim 3 join with an
+    // empty body and collect the name later, on the role-selection screen. Requiring it here would
+    // break joining for both.
     @PostMapping("/{teamId}/join")
     public Map<String, Object> joinTeam(
             @PathVariable UUID teamId,
             @RequestBody Map<String, String> req) {
 
-        return service.joinTeam(teamId, req.get("participantName"));
+        return service.joinTeam(teamId,
+                Validate.optionalText(req.get("participantName"), "Your name", NAME_MAX));
     }
-    
+
     // 🔎 RESOLVE a short join code → team id
     @GetMapping("/resolve/{code}")
     public Map<String, Object> resolveCode(@PathVariable String code) {
-        return service.resolveCode(code);
+        return service.resolveCode(Validate.matching(
+                code, "Join code", JOIN_CODE_PATTERN, 6, "must be the 4-digit code from your CEO"));
     }
 
     // ℹ️ Team info (name + join code) for display on the role / round screens
@@ -74,9 +94,10 @@ public class TeamController {
 
         service.assignRole(
             teamId,
-            UUID.fromString(req.get("participantId")),
-            req.get("role"),
-            req.get("name")
+            Validate.uuid(req.get("participantId"), "participantId"),
+            Validate.matching(req.get("role"), "Role", ROLE_PATTERN, 40, "is not a valid role"),
+            // Optional: Sim 2 assigns a role without a name (the name was given when joining).
+            Validate.optionalText(req.get("name"), "Your name", NAME_MAX)
         );
     }
     
