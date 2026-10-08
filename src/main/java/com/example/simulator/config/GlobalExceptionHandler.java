@@ -59,6 +59,13 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(Map.of("error", safeMessage(ex)));
     }
 
+    /** Authenticated, but not permitted. Separate from 400 so the console can tell them apart. */
+    @ExceptionHandler(com.example.simulator.faculty.FacultyForbiddenException.class)
+    public ResponseEntity<Map<String, Object>> handleForbidden(
+            com.example.simulator.faculty.FacultyForbiddenException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", ex.getMessage()));
+    }
+
     /** Malformed path/query parameter (e.g. a value that is not a valid UUID). */
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<Map<String, Object>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
