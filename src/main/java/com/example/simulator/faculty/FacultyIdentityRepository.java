@@ -144,4 +144,65 @@ public interface FacultyIdentityRepository
     @Query(value = "UPDATE faculty_user SET status = :status WHERE faculty_user_id = :id",
             nativeQuery = true)
     void setFacultyStatus(@Param("id") UUID facultyUserId, @Param("status") String status);
+
+    // ───────────────────────────────────────────────────────────── cohorts
+
+    /**
+     * Whether an organisation currently holds a usable licence for a simulation.
+     *
+     * <p>Checked when a cohort is created, which is the choke point: a batch can only exist for
+     * something the institution actually bought, and every team and student inherits its scope from
+     * the cohort they join.
+     */
+    @Query(value = """
+            SELECT EXISTS (
+              SELECT 1 FROM entitlement e
+              WHERE e.organization_id = :orgId
+                AND e.simulation_id = :simId
+                AND e.valid_from <= current_date
+                AND (e.valid_until IS NULL OR e.valid_until >= current_date))
+            """, nativeQuery = true)
+    boolean isEntitled(@Param("orgId") UUID organizationId, @Param("simId") UUID simulationId);
+
+    @Query(value = "SELECT EXISTS (SELECT 1 FROM cohort WHERE upper(join_code) = upper(:code)"
+            + " AND status = 'ACTIVE')", nativeQuery = true)
+    boolean joinCodeTaken(@Param("code") String joinCode);
+
+    @Modifying
+    @Query(value = """
+            INSERT INTO cohort (cohort_id, organization_id, simulation_id, name, join_code, created_by)
+            VALUES (:id, :orgId, :simId, :name, :joinCode, :createdBy)
+            """, nativeQuery = true)
+    void insertCohort(@Param("id") UUID id, @Param("orgId") UUID organizationId,
+            @Param("simId") UUID simulationId, @Param("name") String name,
+            @Param("joinCode") String joinCode, @Param("createdBy") UUID createdBy);
+
+    /** Cohorts visible to the caller: their own organisation's, or all of them for platform staff. */
+    @Query(value = """
+            SELECT c.cohort_id       AS "cohortId",
+                   c.name            AS "name",
+                   c.join_code       AS "joinCode",
+                   c.simulation_id   AS "simulationId",
+                   s.name            AS "simulationName",
+                   c.status          AS "status",
+                   c.created_at      AS "createdAt",
+                   o.name            AS "organizationName",
+                   (SELECT count(*) FROM team t WHERE t.cohort_id = c.cohort_id) AS "teamCount"
+            FROM cohort c
+            JOIN organization o ON o.organization_id = c.organization_id
+            LEFT JOIN simulations s ON s.simulation_id = c.simulation_id
+            WHERE :platformAdmin = true OR c.organization_id = CAST(:orgId AS uuid)
+            ORDER BY c.created_at DESC
+            """, nativeQuery = true)
+    List<Map<String, Object>> findCohorts(@Param("platformAdmin") boolean platformAdmin,
+            @Param("orgId") String organizationId);
+
+    @Modifying
+    @Query(value = """
+            UPDATE cohort SET status = :status
+            WHERE cohort_id = :id
+              AND (:platformAdmin = true OR organization_id = CAST(:orgId AS uuid))
+            """, nativeQuery = true)
+    int setCohortStatus(@Param("id") UUID cohortId, @Param("status") String status,
+            @Param("platformAdmin") boolean platformAdmin, @Param("orgId") String organizationId);
 }

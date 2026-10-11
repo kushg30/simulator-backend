@@ -164,6 +164,15 @@ public interface FacultyRepository extends org.springframework.data.repository.R
 			    LEFT JOIN run_round_clock rc ON rc.run_id = rs.run_id
 			                                AND rc.round_number = rs.round_number
 			    WHERE sr.status <> 'TERMINATED'
+			      -- Tenancy. A platform admin sees everything; anybody else sees only teams whose
+			      -- cohort belongs to their own organisation. Teams recorded before tenancy existed
+			      -- have no cohort, so they resolve to platform admins only — which is correct: they
+			      -- belong to no customer and must not surface in a customer console.
+			      AND (:platformAdmin = true OR EXISTS (
+			            SELECT 1 FROM team tn
+			            JOIN cohort co ON co.cohort_id = tn.cohort_id
+			            WHERE tn.team_id = sr.team_id
+			              AND co.organization_id = CAST(:orgId AS uuid)))
 			    -- Show the furthest round the team has reached (highest round_number),
 			    -- not whichever round happens to still be ACTIVE — a stale earlier round
 			    -- that never got marked COMPLETE must never outrank a later finished one.
@@ -197,6 +206,15 @@ public interface FacultyRepository extends org.springframework.data.repository.R
 			    LEFT JOIN run_round_clock rc ON rc.run_id = sr.run_id
 			                                AND rc.round_number = COALESCE(s1.round_number, 1)
 			    WHERE sr.status <> 'TERMINATED'
+			      -- Tenancy. A platform admin sees everything; anybody else sees only teams whose
+			      -- cohort belongs to their own organisation. Teams recorded before tenancy existed
+			      -- have no cohort, so they resolve to platform admins only — which is correct: they
+			      -- belong to no customer and must not surface in a customer console.
+			      AND (:platformAdmin = true OR EXISTS (
+			            SELECT 1 FROM team tn
+			            JOIN cohort co ON co.cohort_id = tn.cohort_id
+			            WHERE tn.team_id = sr.team_id
+			              AND co.organization_id = CAST(:orgId AS uuid)))
 			      AND NOT EXISTS (SELECT 1 FROM sim2_round_state rs2 WHERE rs2.run_id = sr.run_id)
 			  )
 			) t
@@ -205,7 +223,8 @@ public interface FacultyRepository extends org.springframework.data.repository.R
 			ORDER BY t."startedAt" DESC NULLS LAST, (t."roundStatus" = 'ACTIVE') DESC
 			LIMIT 100
 			""", nativeQuery = true)
-	List<Map<String, Object>> findSessionOverview();
+	List<Map<String, Object>> findSessionOverview(@Param("platformAdmin") boolean platformAdmin,
+			@Param("orgId") String organizationId);
 
 	/** Artifacts authored for a round, with any override already applied — delay/bypass targets. */
 	@Query(value = """

@@ -8,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -16,9 +17,10 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * Faculty control API — shared by every simulation on the platform.
  *
- * <p>Every route here is behind {@link FacultyAuthFilter}, which requires the shared facilitator
- * token. Scope follows the spec: an action targets either one team (one run) or all teams running a
- * given simulation.
+ * <p>Every route here is behind {@link FacultyAuthFilter}, which resolves the caller to a
+ * {@link FacultyPrincipal}. Scope follows the spec: an action targets either one team (one run) or
+ * all teams running a given simulation — and, since tenancy, only within the caller's own
+ * organisation.
  */
 @RestController
 @RequestMapping("/api/faculty")
@@ -105,10 +107,11 @@ public class FacultyController {
 
 	// ---------------------------------------------------------------- console
 
-	/** Everything currently in play, for the facilitator console. */
+	/** Everything currently in play, for the facilitator console — scoped to the caller's org. */
 	@GetMapping("/overview")
-	public List<Map<String, Object>> overview() {
-		return service.sessionOverview();
+	public List<Map<String, Object>> overview(
+			@RequestAttribute(FacultyAuthFilter.PRINCIPAL_ATTRIBUTE) FacultyPrincipal principal) {
+		return service.sessionOverview(principal);
 	}
 
 	/** Artifacts in a round, with any override applied — the targets for delay/bypass. */

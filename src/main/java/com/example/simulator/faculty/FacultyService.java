@@ -88,9 +88,18 @@ public class FacultyService {
 
 	// ------------------------------------------------------------------ console
 
+	/**
+	 * The console's team list, scoped to whoever is asking.
+	 *
+	 * <p>The principal is a required argument rather than something resolved inside this method: a
+	 * caller cannot then forget to pass it, and forgetting is exactly the failure that leaks one
+	 * customer's teams into another customer's console.
+	 */
 	@Transactional(readOnly = true)
-	public List<Map<String, Object>> sessionOverview() {
-		return repository.findSessionOverview();
+	public List<Map<String, Object>> sessionOverview(FacultyPrincipal principal) {
+		return repository.findSessionOverview(
+				principal.platformAdmin(),
+				principal.organizationId() == null ? null : principal.organizationId().toString());
 	}
 
 	@Transactional(readOnly = true)
