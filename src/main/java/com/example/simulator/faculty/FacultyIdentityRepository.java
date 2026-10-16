@@ -37,7 +37,15 @@ public interface FacultyIdentityRepository
             """, nativeQuery = true)
     Map<String, Object> findByAccessKeyHash(@Param("keyHash") String keyHash);
 
+    /**
+     * Records that a key was used, for "is this account still active / who is running sessions".
+     *
+     * <p>Carries its own {@code @Transactional}: it is called from the auth filter, which runs
+     * outside any transaction, and a {@code @Modifying} query without one is silently discarded —
+     * the field stayed null through a dozen authenticated requests before this was added.
+     */
     @Modifying
+    @org.springframework.transaction.annotation.Transactional
     @Query(value = "UPDATE faculty_user SET last_seen_at = now() WHERE faculty_user_id = :id",
             nativeQuery = true)
     void touchLastSeen(@Param("id") UUID facultyUserId);
