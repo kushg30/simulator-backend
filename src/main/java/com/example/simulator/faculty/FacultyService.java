@@ -321,6 +321,18 @@ public class FacultyService {
 		return Math.max(10, Math.min(60, secs));
 	}
 
+	/**
+	 * Records that a facilitator started a run.
+	 *
+	 * <p>Takes the run id rather than the team id so it goes through the same logging path as every
+	 * other facilitator action — simulation and team are derived from the run exactly as they are
+	 * for a pause or a terminate, rather than this one action keeping its own bookkeeping.
+	 */
+	@Transactional
+	public void logTeamStart(UUID runId, String scope, String actor) {
+		log(runId, 1, "START", scope, null, null, null, null, actor);
+	}
+
 	// ------------------------------------------------------------------ internal
 
 	private void log(UUID runId, Integer roundNumber, String actionType, String scope,

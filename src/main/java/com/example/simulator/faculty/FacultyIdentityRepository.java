@@ -213,4 +213,79 @@ public interface FacultyIdentityRepository
             """, nativeQuery = true)
     int setCohortStatus(@Param("id") UUID cohortId, @Param("status") String status,
             @Param("platformAdmin") boolean platformAdmin, @Param("orgId") String organizationId);
+
+    // ─────────────────────────────────────────────────────── teams forming
+
+    /**
+     * Teams that exist but have not started a run — the assembly phase.
+     *
+     * <p>The console's main list is built from {@code simulation_runs}, so during the minutes when
+     * students are forming teams and claiming roles it shows nothing at all. This is what the
+     * facilitator actually needs in that window: who has gathered, how many seats are filled, and
+     * which roles are still empty.
+     *
+     * <p>Only teams belonging to a cohort appear. A team with no cohort belongs to no customer, so
+     * it is visible to platform staff alone — the same rule the live list follows.
+     */
+    @Query(value = """
+            SELECT t.team_id     AS "teamId",
+                   t.team_name   AS "teamName",
+                   t.join_code   AS "joinCode",
+                   c.cohort_id   AS "cohortId",
+                   c.name        AS "cohortName",
+                   o.name        AS "organizationName",
+                   s.name        AS "simulationName",
+                   t.simulation_id AS "simulationId",
+                   (SELECT count(*) FROM simulation_roles sr2
+                     WHERE sr2.simulation_id = t.simulation_id)        AS "seatsTotal",
+                   (SELECT count(DISTINCT p.role) FROM participant p
+                     WHERE p.team_id = t.team_id AND p.role IS NOT NULL) AS "seatsFilled",
+                   -- The roles still empty, so the facilitator can say "we are waiting on a CFO"
+                   -- rather than "someone is missing".
+                   (SELECT string_agg(sr3.role_code, ', ' ORDER BY sr3.role_code)
+                      FROM simulation_roles sr3
+                     WHERE sr3.simulation_id = t.simulation_id
+                       AND sr3.role_code NOT IN (
+                             SELECT p2.role FROM participant p2
+                              WHERE p2.team_id = t.team_id AND p2.role IS NOT NULL))
+                                                                        AS "missingRoles"
+            FROM team t
+            JOIN cohort c       ON c.cohort_id = t.cohort_id
+            JOIN organization o ON o.organization_id = c.organization_id
+            LEFT JOIN simulations s ON s.simulation_id = t.simulation_id
+            WHERE NOT EXISTS (SELECT 1 FROM simulation_runs r WHERE r.team_id = t.team_id)
+              AND c.status = 'ACTIVE'
+              AND (:platformAdmin = true OR c.organization_id = CAST(:orgId AS uuid))
+            ORDER BY c.created_at DESC, t.team_name
+            """, nativeQuery = true)
+    List<Map<String, Object>> findTeamsForming(@Param("platformAdmin") boolean platformAdmin,
+            @Param("orgId") String organizationId);
+
+    /**
+     * The organisation a team belongs to, via its cohort. Null when the team has no cohort.
+     *
+     * <p>Used to confirm a facilitator may start a given team before doing it — a start is an action
+     * on somebody's live classroom, so the id in the URL is never taken on trust.
+     */
+    @Query(value = """
+            SELECT c.organization_id
+            FROM team t JOIN cohort c ON c.cohort_id = t.cohort_id
+            WHERE t.team_id = :teamId
+            """, nativeQuery = true)
+    UUID findTeamOrganization(@Param("teamId") UUID teamId);
+
+    /** Team ids in a cohort with no run yet — the batch-wide start. */
+    @Query(value = """
+            SELECT t.team_id
+            FROM team t
+            WHERE t.cohort_id = :cohortId
+              AND NOT EXISTS (SELECT 1 FROM simulation_runs r WHERE r.team_id = t.team_id)
+            ORDER BY t.team_name
+            """, nativeQuery = true)
+    List<UUID> findUnstartedTeamIds(@Param("cohortId") UUID cohortId);
+
+    /** The organisation a cohort belongs to, for the same reason as above. */
+    @Query(value = "SELECT organization_id FROM cohort WHERE cohort_id = :cohortId",
+            nativeQuery = true)
+    UUID findCohortOrganization(@Param("cohortId") UUID cohortId);
 }
