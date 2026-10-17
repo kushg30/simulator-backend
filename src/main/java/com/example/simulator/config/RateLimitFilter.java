@@ -150,7 +150,10 @@ public class RateLimitFilter {
 					return;
 				}
 
-				if (path.startsWith("/api/teams/resolve/")
+				// Both code lookups share a bucket: the 4-digit team code and the batch code a
+				// facilitator reads out. Neither carries a credential, and both are guessable given
+				// enough attempts — the batch code far less so, but it opens a whole cohort.
+				if ((path.startsWith("/api/teams/resolve/") || path.startsWith("/api/cohorts/resolve/"))
 						&& overLimit(joinCodes, ip, windowMs, joinCodeLimit)) {
 					log.warn("Rate limit hit (join codes) ip={}", ip);
 					reject(response, windowSeconds, "Too many attempts. Please wait a moment and try again.");

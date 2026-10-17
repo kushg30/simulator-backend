@@ -48,7 +48,10 @@ public class TeamController {
             return ResponseEntity.ok(service.createTeam(
                     Validate.requiredText(req.get("teamName"), "Team name", NAME_MAX),
                     Validate.optionalText(req.get("participantName"), "Your name", NAME_MAX),
-                    Validate.optionalUuid(req.get("simulationId"), "simulationId")
+                    Validate.optionalUuid(req.get("simulationId"), "simulationId"),
+                    // Optional: present when the class entered a batch code, absent for the
+                    // platform's own demo runs. The service re-validates it — never trusted here.
+                    Validate.optionalUuid(req.get("cohortId"), "cohortId")
             ));
         } catch (RuntimeException e) {
             // Validation errors (e.g. blank / all-numeric team name) → clean 400, not a 500.

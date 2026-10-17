@@ -17,6 +17,7 @@ public class TeamService {
     private final TeamRepository teamRepo;
     private final ParticipantRepository participantRepo;
     private final SimulationRoleRepository simulationRoleRepo;
+    private final com.example.simulator.faculty.CohortAccessRepository cohortRepo;
 
     /** Simulation used when a caller does not specify one (Simulation 1). */
     private final UUID defaultSimulationId;
@@ -24,10 +25,12 @@ public class TeamService {
     public TeamService(TeamRepository teamRepo,
                        ParticipantRepository participantRepo,
                        SimulationRoleRepository simulationRoleRepo,
+                       com.example.simulator.faculty.CohortAccessRepository cohortRepo,
                        @Value("${simulator.default-simulation-id:475db739-0708-48d4-b4db-5a23f1da50d9}") String defaultSimulationId) {
         this.teamRepo = teamRepo;
         this.participantRepo = participantRepo;
         this.simulationRoleRepo = simulationRoleRepo;
+        this.cohortRepo = cohortRepo;
         this.defaultSimulationId = UUID.fromString(defaultSimulationId);
     }
 
@@ -41,7 +44,8 @@ public class TeamService {
     }
 
     // 🔵 CREATE TEAM (creator becomes the simulation's lead role)
-    public Map<String, Object> createTeam(String teamName, String participantName, UUID simulationId) {
+    public Map<String, Object> createTeam(String teamName, String participantName, UUID simulationId,
+            UUID cohortId) {
 
         // Team name must not be blank or all digits (would clash with the numeric join code).
         String name = teamName == null ? "" : teamName.trim();
@@ -54,6 +58,21 @@ public class TeamService {
 
         UUID sim = (simulationId != null) ? simulationId : defaultSimulationId;
 
+        // The batch a team belongs to is what ties it, and everything it goes on to record, to the
+        // institution that holds the licence. Re-checked here rather than trusted from the browser:
+        // the cohort id reaches us through the client, so a student could otherwise send any value.
+        if (cohortId != null) {
+            UUID cohortSim = cohortRepo.findActiveSimulationId(cohortId);
+            if (cohortSim == null) {
+                throw new RuntimeException("That batch is no longer open. Check with your facilitator.");
+            }
+            // A batch code for one simulation must not open another — otherwise a licence for
+            // Phoenix would quietly admit a class into Meridian.
+            if (!cohortSim.equals(sim)) {
+                throw new RuntimeException("That batch code is for a different simulation.");
+            }
+        }
+
         String leadRole = simulationRoleRepo.findLeadRoleCode(sim);
         if (leadRole == null) {
             throw new IllegalStateException("Simulation " + sim + " has no lead role configured");
@@ -62,6 +81,7 @@ public class TeamService {
         Team team = new Team();
         team.setTeamName(name);
         team.setSimulationId(sim);
+        team.setCohortId(cohortId);
         team.setJoinCode(generateJoinCode());
         teamRepo.save(team);
 

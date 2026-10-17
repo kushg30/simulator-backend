@@ -23,6 +23,22 @@ public class Team {
     /** Which simulation this team is playing. Null is treated as Simulation 1. */
     private UUID simulationId;
 
+    /**
+     * The batch this team belongs to, and through it the institution that owns the licence.
+     *
+     * <p>Null for teams created before tenancy existed, and for the platform's own demo runs. Those
+     * resolve to platform staff only in the console — correct, since they belong to no customer.
+     */
+    private UUID cohortId;
+
+	public UUID getCohortId() {
+		return cohortId;
+	}
+
+	public void setCohortId(UUID cohortId) {
+		this.cohortId = cohortId;
+	}
+
 	public String getJoinCode() {
 		return joinCode;
 	}
